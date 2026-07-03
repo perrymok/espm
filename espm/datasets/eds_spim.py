@@ -11,13 +11,11 @@ The main purpose of this class is to provide an easy and clean interface between
 """
 
 from exspy.signals import EDSTEMSpectrum
-from hyperspy.roi import RectangularROI
 from espm.models import EDXS
 from exspy.utils.eds import take_off_angle
 from espm.utils import number_to_symbol_list, get_explained_intensity_W, symbol_to_number_list
 import numpy as np
 from espm.estimators import NMFEstimator
-import re
 
 import warnings
 from prettytable import PrettyTable
@@ -29,6 +27,7 @@ from hyperspy.signal_tools import Signal1DRangeSelector
 from hyperspy.ui_registry import get_gui
 import intervaltree
 
+from hyperspy.roi import RectangularROI
 import hyperspy.api as hs
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -194,7 +193,16 @@ class EDSespm(EDSTEMSpectrum) :
         self.metadata.EDS_model.elements = self.model.model_elts
         self.metadata.EDS_model.norm = self.model.norm
 
-    def set_analysis_parameters (self, thickness = 200e-7, density = 3.5, detector_type = "SDD_efficiency.txt", width_slope = 0.01, width_intercept = 0.065, xray_db = "default_xrays.json") :
+    def set_analysis_parameters(
+        self,
+        thickness=None,
+        density=None,
+        detector_type=None,
+        width_slope=None,
+        width_intercept=None,
+        geom_eff=None,
+        xray_db=None
+    ):
         r"""
         Set the relevant parameters for the analysis in the metadata of the :class:`EDSespm` object.
 

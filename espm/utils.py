@@ -7,7 +7,7 @@ from espm.conf import SYMBOLS_PERIODIC_TABLE, NUMBER_PERIODIC_TABLE
 import json
 from exspy.material import atomic_to_weight, density_of_mixture
 from functools import wraps
-import re
+
 import espm
 from IPython.utils import io
 import hyperspy.api as hs
