@@ -17,6 +17,7 @@ from espm.utils import number_to_symbol_list, get_explained_intensity_W, symbol_
 import numpy as np
 from espm.estimators import NMFEstimator
 import re
+
 import warnings
 from prettytable import PrettyTable
 from tqdm import tqdm
@@ -30,7 +31,6 @@ import intervaltree
 NPT = json.load(open(NUMBER_PERIODIC_TABLE))
 
 class EDSespm(EDSTEMSpectrum) : 
-
     _signal_type = "EDS_espm"
 
     def __init__ (self,*args,**kwargs) : 
@@ -129,16 +129,6 @@ class EDSespm(EDSTEMSpectrum) :
         return self._X
     
     @property
-    def model(self) :
-        r"""
-        The :class:`espm.models.EDXS` model corresponding to the metadata of the :class:`EDSespm` object.
-        """ 
-        if self.model_ is None : 
-            mod_pars = get_metadata(self)
-            self.model_ = EDXS(**mod_pars, custom_init=self.custom_init_)
-        return self.model_
-    
-    @property
     def G(self) :
         r"""
         The G matrix of the :class:`espm.models.EDXS` model corresponding to the metadata of the :class:`EDSespm` object.
@@ -151,6 +141,17 @@ class EDSespm(EDSTEMSpectrum) :
                 warnings.warn("You did not used the build_G method to build the G matrix. In ESpM-NMF, an idenity matrix will be used for decomposition")
                 return None
         return self.G_
+
+    @property
+    def model (self) :
+        r"""
+        The :class:`espm.models.EDXS` model corresponding to the metadata of the :class:`EDSespm` object.
+        """ 
+        if self.model_ is None : 
+            mod_pars = get_metadata(self)
+            self.model_ = EDXS(**mod_pars, custom_init=self.custom_init_)
+        return self.model_
+
 
     def build_G(self, problem_type = "bremsstrahlung",ignored_elements = ['Cu'],*, elements_dict = {}) :
         r"""
@@ -185,6 +186,197 @@ class EDSespm(EDSTEMSpectrum) :
         self.metadata.EDS_model.separated_lines = elements_dict
         self.metadata.EDS_model.elements = self.model.model_elts
         self.metadata.EDS_model.norm = self.model.norm
+
+
+    def set_analysis_parameters (self, thickness = 200e-7, density = 3.5, detector_type = "SDD_efficiency.txt", width_slope = 0.01, width_intercept = 0.065, xray_db = "default_xrays.json") :
+        r"""
+        Set the relevant parameters for the analysis in the metadata of the :class:`EDSespm` object.
+
+        Parameters
+        ----------
+        thickness : float
+            Thickness of the sample in cm.
+        density : float
+            Density of the sample in g/cm^3.
+        detector_type : str
+            Type of the detector. The default is "SDD_efficiency.txt".
+        width_slope : float
+            Slope of the width of the peaks in the EDS spectrum.
+        width_intercept : float
+            Intercept of the width of the peaks in the EDS spectrum.
+        geom_eff : float
+            Geometric efficiency of the detector.
+        acq_time : float
+            Acquisition time of the spectrum in seconds.
+        probe_current : float
+            Probe current in A.
+        xray_db : str
+            Path to the xray database file. The default is "200keV_xrays.json".
+        """
+        md = self.metadata
+
+        if thickness is not None:
+            md.set_item("Sample.thickness", thickness)
+        if density is not None:
+            md.set_item("Sample.density", density)
+        if detector_type is not None:
+            md.set_item("Acquisition_instrument.TEM.Detector.EDS.type", detector_type)
+        if width_slope is not None:
+            md.set_item("Acquisition_instrument.TEM.Detector.EDS.width_slope", width_slope)
+        if width_intercept is not None:
+            md.set_item("Acquisition_instrument.TEM.Detector.EDS.width_intercept", width_intercept)
+        if geom_eff is not None:
+            md.set_item("Acquisition_instrument.TEM.Detector.EDS.geometric_efficiency", geom_eff)
+        if xray_db is not None:
+            md.set_item("xray_db", xray_db)
+
+        try : 
+            md.set_item("Acquisition_instrument.TEM.Detector.EDS.take_off_angle",
+                        take_off_angle(tilt_stage = md.Acquisition_instrument.TEM.Stage.tilt_alpha,
+                                       azimuth_angle = md.Acquisition_instrument.TEM.Detector.EDS.azimuth_angle,
+                                       elevation_angle = md.Acquisition_instrument.TEM.Detector.EDS.elevation_angle,
+                                       beta_tilt = md.Acquisition_instrument.TEM.Stage.tilt_beta))
+        except AttributeError :
+            print("You need to define the azimuth and elevation of the detector as well as the alpha and beta tilt of the sample holder. Please, use the set_microscope_parameters function.")
+
+
+    ############################
+    # Helper functions for NMF #
+    ############################
+
+    def carto_fixed_W(self, brstlg_comps = 1) : 
+        r"""
+        Helper function to create a fixed_W matrix for chemical mapping. It will output a matrix 
+        It can be used to make a decomposition with as many components as they are  chemical elements and then allow each component to have only one of each element.
+        The spectral components are then the characteristic peaks of each element and the spatial components are the associated chemical maps.
+        The bremsstrahlung is calculated separately and added to other components.
+
+        Parameters
+        ----------
+        brstlg_comps : int, optional
+            Number of bremsstrahlung components to add to the decomposition.
+
+        Returns
+        -------
+        W : numpy.ndarray
+        """
+        if self.G_ is None :
+            raise ValueError("The G matrix has not been built yet. Please use the build_G method.")
+        elements = self.metadata.EDS_model.elements
+        if self.problem_type == "no_brstlg" : 
+            W = np.diag(-1* np.ones((len(elements), )))
+        elif self.problem_type == "bremsstrahlung" : 
+            W1 = np.diag(-1* np.ones((len(elements), )))
+            W2 = np.zeros((2, len(elements)))
+            W_elts = np.vstack((W1,W2))
+            W3 = np.zeros((len(elements),brstlg_comps))
+            W4 = -1*np.ones((2,brstlg_comps))
+            W_brstlg = np.vstack((W3,W4))
+            W = np.hstack((W_elts,W_brstlg))
+
+        return W
+
+
+    def set_fixed_W (self,phases_dict) : 
+        r"""
+        Helper function to create a fixed_W matrix. The output matrix will have -1 entries except for the elements (and bremsstrahlung parameters) that are present in the phases_dict dictionary.
+        In the output (fixed_W) matrix, the -1 entries will be ignored during the decomposition using :class:`espm.estimator.NMFEstimator` are normally learned while the non-negative entries will be fixed to the values given in the phases_dict dictionary.
+        Usually, the easiest is to fix some elements to 0.0 in some phases if you want to improve unmixing results. For example, if you have a phase with only Si and O, you can fix the Fe element to 0.0 in this phase.
+
+        Parameters
+        ----------
+        phases_dict : dict
+            Determines which elements of fixed_W are going to be non-negative. The dictionnary has typically the following structure : phases_dict = {"phase1_name" : {"Fe" : 0.0, "O" : 1.25e23}, "phase2_name" : {"Si" : 0.0, "b0" : 0.05}}.
+        Returns
+        -------
+        W : numpy.ndarray
+        """
+        if self.G_ is None :
+            raise ValueError("The G matrix has not been built yet. Please use the build_G method.")
+        raw_elts = self.metadata.EDS_model.elements
+        elements = self.model.get_elements()
+        indices = self.model.NMF_simplex()
+
+        # convert elements to symbols but also omitting splitted lines
+        @number_to_symbol_list
+        def convert_to_symbols(elements = []) : 
+            return elements
+        
+        conv_elts = convert_to_symbols(elements=elements)
+
+        if self.problem_type == "no_brstlg" : 
+            W = -1* np.ones((len(raw_elts), len(phases_dict.keys())))
+        elif self.problem_type == "bremsstrahlung" : 
+            W = -1* np.ones((len(raw_elts)+2, len(phases_dict.keys())))
+        else : 
+            raise ValueError("problem type should be either no_brstlg or bremsstrahlung")
+        for p, phase in enumerate(phases_dict) : 
+            for key in phases_dict[phase] : 
+                if key == "b0" : 
+                    if self.problem_type == "bremsstrahlung" : 
+                        W[-2,p] = phases_dict[phase][key]
+                    else : 
+                        warnings.warn("The chosen EDXS modelling does not incorporate the bremsstrahlung. Input bremsstrahlung parameters will be ignored.")
+                if key == "b1" :
+                    if self.problem_type == "bremsstrahlung" :
+                        W[-1,p] = phases_dict[phase][key]
+                    else :
+                        warnings.warn("The chosen EDXS modelling does not incorporate the bremsstrahlung. Input bremsstrahlung parameters will be ignored.")
+                if key in conv_elts : 
+                    W[indices[conv_elts.index(key)],p] = phases_dict[phase][key]
+        return W
+    
+    def print_concentration_report (self, selected_elts = [], W_input = None, fit_error = True, disclaimer = True) : 
+        r"""
+        Print a report of the chemical concentrations from a fitted W.
+
+        Parameters
+        ----------
+        selected_elts : list, optional
+            List of the elements to be printed. If empty, all the elements will be printed.
+
+        W_input : numpy.ndarray, optional
+            If not None, the concentrations will be computed from this W matrix instead of the one fitted during the decomposition.
+
+        fit_error : bool, optional
+            If True, the statistical errors on the concentrations will be printed.
+
+        disclaimer : bool, optional
+            If True, a disclaimer will be printed at the end of the report.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        - This function is only available if the learning results contain a decomposition algorithm that has been fitted.
+        """
+        conv_elts, W, errors = self.concentration_report(selected_elts = selected_elts, W_input = W_input, fit_error = fit_error)
+        
+        table = PrettyTable()
+        field_list = ["Elements"]
+        for i in range(W.shape[1]) :
+            field_list.append("p" + str(i) + " (at.%)")
+            if fit_error : 
+                field_list.append("p" + str(i) + " std (%)")
+        table.field_names = field_list
+        for i,j in enumerate(conv_elts) :
+            row = [j]
+            for k in range(W.shape[1]) :
+                row.append(W[i,k])
+                if fit_error : 
+                    row.append(errors[i,k])
+            table.add_row(row)
+
+        table.float_format="0.3"
+        table.align = "r"
+        table.align["Elements"] = "l"
+        # table.set_style(MSWORD_FRIENDLY)
+
+        print(table)
+        if disclaimer and fit_error: 
+            print("\nDisclaimer : The presented errors correspond to the statistical error on the fitted intensity of the peaks according to a Poisson law.\nIn other words it corresponds to the precision of the measurment.\nThe accuracy of the measurment strongly depends on other factors such as absorption, cross-sections, etc...\nPlease consider these parameters when interpreting the results.")
 
     ############################
     # Bremsstrahlung functions #
@@ -396,91 +588,7 @@ class EDSespm(EDSTEMSpectrum) :
         ranges_list = [(values[2*i-1],values[2*i]) for i in range(1,num+1)]
         return ranges_list
 
-    ############################
-    # Helper functions for NMF #
-    ############################
 
-    def carto_fixed_W(self, brstlg_comps = 1) : 
-        r"""
-        Helper function to create a fixed_W matrix for chemical mapping. It will output a matrix 
-        It can be used to make a decomposition with as many components as they are  chemical elements and then allow each component to have only one of each element.
-        The spectral components are then the characteristic peaks of each element and the spatial components are the associated chemical maps.
-        The bremsstrahlung is calculated separately and added to other components.
-
-        Parameters
-        ----------
-        brstlg_comps : int, optional
-            Number of bremsstrahlung components to add to the decomposition.
-
-        Returns
-        -------
-        W : numpy.ndarray
-        """
-        if self.G_ is None :
-            raise ValueError("The G matrix has not been built yet. Please use the build_G method.")
-        elements = self.metadata.EDS_model.elements
-        if self.problem_type == "no_brstlg" : 
-            W = np.diag(-1* np.ones((len(elements), )))
-        elif self.problem_type == "bremsstrahlung" : 
-            W1 = np.diag(-1* np.ones((len(elements), )))
-            W2 = np.zeros((2, len(elements)))
-            W_elts = np.vstack((W1,W2))
-            W3 = np.zeros((len(elements),brstlg_comps))
-            W4 = -1*np.ones((2,brstlg_comps))
-            W_brstlg = np.vstack((W3,W4))
-            W = np.hstack((W_elts,W_brstlg))
-
-        return W
-
-    def set_fixed_W (self,phases_dict) : 
-        r"""
-        Helper function to create a fixed_W matrix. The output matrix will have -1 entries except for the elements (and bremsstrahlung parameters) that are present in the phases_dict dictionary.
-        In the output (fixed_W) matrix, the -1 entries will be ignored during the decomposition using :class:`espm.estimator.NMFEstimator` are normally learned while the non-negative entries will be fixed to the values given in the phases_dict dictionary.
-        Usually, the easiest is to fix some elements to 0.0 in some phases if you want to improve unmixing results. For example, if you have a phase with only Si and O, you can fix the Fe element to 0.0 in this phase.
-
-        Parameters
-        ----------
-        phases_dict : dict
-            Determines which elements of fixed_W are going to be non-negative. The dictionnary has typically the following structure : phases_dict = {"phase1_name" : {"Fe" : 0.0, "O" : 1.25e23}, "phase2_name" : {"Si" : 0.0, "b0" : 0.05}}.
-        Returns
-        -------
-        W : numpy.ndarray
-        """
-        if self.G_ is None :
-            raise ValueError("The G matrix has not been built yet. Please use the build_G method.")
-        raw_elts = self.metadata.EDS_model.elements
-        elements = self.model.get_elements()
-        indices = self.model.NMF_simplex()
-
-        # convert elements to symbols but also omitting splitted lines
-        @number_to_symbol_list
-        def convert_to_symbols(elements = []) : 
-            return elements
-        
-        conv_elts = convert_to_symbols(elements=elements)
-
-        if self.problem_type == "no_brstlg" : 
-            W = -1* np.ones((len(raw_elts), len(phases_dict.keys())))
-        elif self.problem_type == "bremsstrahlung" : 
-            W = -1* np.ones((len(raw_elts)+2, len(phases_dict.keys())))
-        else : 
-            raise ValueError("problem type should be either no_brstlg or bremsstrahlung")
-        for p, phase in enumerate(phases_dict) : 
-            for key in phases_dict[phase] : 
-                if key == "b0" : 
-                    if self.problem_type == "bremsstrahlung" : 
-                        W[-2,p] = phases_dict[phase][key]
-                    else : 
-                        warnings.warn("The chosen EDXS modelling does not incorporate the bremsstrahlung. Input bremsstrahlung parameters will be ignored.")
-                if key == "b1" :
-                    if self.problem_type == "bremsstrahlung" :
-                        W[-1,p] = phases_dict[phase][key]
-                    else :
-                        warnings.warn("The chosen EDXS modelling does not incorporate the bremsstrahlung. Input bremsstrahlung parameters will be ignored.")
-                if key in conv_elts : 
-                    W[indices[conv_elts.index(key)],p] = phases_dict[phase][key]
-        return W
-    
     def decomposition(
         self,
         normalize_poissonian_noise=False,
@@ -689,60 +797,6 @@ class EDSespm(EDSTEMSpectrum) :
         
         # norm = self.metadata.EDS_model.norm
 
-        
-    
-    def print_concentration_report (self, selected_elts = [], W_input = None, fit_error = True, disclaimer = True) : 
-        r"""
-        Print a report of the chemical concentrations from a fitted W.
-
-        Parameters
-        ----------
-        selected_elts : list, optional
-            List of the elements to be printed. If empty, all the elements will be printed.
-
-        W_input : numpy.ndarray, optional
-            If not None, the concentrations will be computed from this W matrix instead of the one fitted during the decomposition.
-
-        fit_error : bool, optional
-            If True, the statistical errors on the concentrations will be printed.
-
-        disclaimer : bool, optional
-            If True, a disclaimer will be printed at the end of the report.
-
-        Returns
-        -------
-        None
-
-        Notes
-        -----
-        - This function is only available if the learning results contain a decomposition algorithm that has been fitted.
-        """
-        conv_elts, W, errors = self.concentration_report(selected_elts = selected_elts, W_input = W_input, fit_error = fit_error)
-        
-        table = PrettyTable()
-        field_list = ["Elements"]
-        for i in range(W.shape[1]) :
-            field_list.append("p" + str(i) + " (at.%)")
-            if fit_error : 
-                field_list.append("p" + str(i) + " std (%)")
-        table.field_names = field_list
-        for i,j in enumerate(conv_elts) :
-            row = [j]
-            for k in range(W.shape[1]) :
-                row.append(W[i,k])
-                if fit_error : 
-                    row.append(errors[i,k])
-            table.add_row(row)
-
-        table.float_format="0.3"
-        table.align = "r"
-        table.align["Elements"] = "l"
-        # table.set_style(MSWORD_FRIENDLY)
-
-        print(table)
-        if disclaimer and fit_error: 
-            print("\nDisclaimer : The presented errors correspond to the statistical error on the fitted intensity of the peaks according to a Poisson law.\nIn other words it corresponds to the precision of the measurment.\nThe accuracy of the measurment strongly depends on other factors such as absorption, cross-sections, etc...\nPlease consider these parameters when interpreting the results.")
-
     def estimate_best_binning(self, inspect = False) :
         r"""
         Estimate the best binning for the dataset based on the method developed by G. Obozinski, N. Perraudin and M. Martinez Ruts.
@@ -796,66 +850,6 @@ class EDSespm(EDSTEMSpectrum) :
             return mprimes_est, estimated_binning  
         else :
             return estimated_binning
-        
-    def set_analysis_parameters(
-        self,
-        thickness=None,
-        density=None,
-        detector_type=None,
-        width_slope=None,
-        width_intercept=None,
-        geom_eff=None,
-        xray_db=None
-    ):
-        r"""
-        Set the relevant parameters for the analysis in the metadata of the :class:`EDSespm` object.
-
-        Parameters
-        ----------
-        thickness : float
-            Thickness of the sample in cm.
-        density : float
-            Density of the sample in g/cm^3.
-        detector_type : str
-            Type of the detector. The default is "SDD_efficiency.txt".
-        width_slope : float
-            Slope of the width of the peaks in the EDS spectrum.
-        width_intercept : float
-            Intercept of the width of the peaks in the EDS spectrum.
-        geom_eff : float
-            Geometric efficiency of the detector.
-        acq_time : float
-            Acquisition time of the spectrum in seconds.
-        probe_current : float
-            Probe current in A.
-        xray_db : str
-            Path to the xray database file. The default is "200keV_xrays.json".
-        """
-        md = self.metadata
-
-        if thickness is not None:
-            md.set_item("Sample.thickness", thickness)
-        if density is not None:
-            md.set_item("Sample.density", density)
-        if detector_type is not None:
-            md.set_item("Acquisition_instrument.TEM.Detector.EDS.type", detector_type)
-        if width_slope is not None:
-            md.set_item("Acquisition_instrument.TEM.Detector.EDS.width_slope", width_slope)
-        if width_intercept is not None:
-            md.set_item("Acquisition_instrument.TEM.Detector.EDS.width_intercept", width_intercept)
-        if geom_eff is not None:
-            md.set_item("Acquisition_instrument.TEM.Detector.EDS.geometric_efficiency", geom_eff)
-        if xray_db is not None:
-            md.set_item("xray_db", xray_db)
-
-        try : 
-            md.set_item("Acquisition_instrument.TEM.Detector.EDS.take_off_angle",
-                        take_off_angle(tilt_stage = md.Acquisition_instrument.TEM.Stage.tilt_alpha,
-                                       azimuth_angle = md.Acquisition_instrument.TEM.Detector.EDS.azimuth_angle,
-                                       elevation_angle = md.Acquisition_instrument.TEM.Detector.EDS.elevation_angle,
-                                       beta_tilt = md.Acquisition_instrument.TEM.Stage.tilt_beta))
-        except AttributeError :
-            print("You need to define the azimuth and elevation of the detector as well as the alpha and beta tilt of the sample holder. Please, use the set_microscope_parameters function.")
 
 
 #######################
@@ -894,5 +888,3 @@ def get_metadata(spim) :
         print("You need to define the relevant parameters for the analysis. Use the set_analysis_parameters function.")
 
     return mod_pars
-
-
