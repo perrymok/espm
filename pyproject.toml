@@ -1,17 +1,18 @@
 [build-system]
-requires = ["setuptools>=64", "setuptools_scm>=8", "wheel"]
+requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[tool.setuptools]
-packages = ["espm", "espm.datasets", "espm.estimators", "espm.models", "espm.tables", "espm.tests", "espm.weights"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["espm*"]
 
 [project]
 name = "espm"
 version = "1.1.3"
 description = "Electron SPectro-Microscopy Python Library"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 readme = "README.rst"
-keywords=[
+keywords = [
     "python",
     "data analysis",
     "microscopy",
@@ -37,16 +38,18 @@ classifiers = [
     'Topic :: Scientific/Engineering'
 ]
 dependencies = [
-  "exspy==0.3.1",
-  "hyperspy==2.2.0",
-  "hyperspy-gui-ipywidgets==2.0.3",
-  "hyperspy-gui-traitsui==2.0.1",
-  "intervaltree==3.1.0",
-  "tqdm==4.67.0",
-  "prettytable==3.12.0",
-  "scikit-learn",
-  "pyqt5==5.15.10",
-  "traits==7.0.2",
+  "exspy>=0.3.2",
+  "hyperspy>=2.4.0",
+  "hyperspy-gui-ipywidgets>=2.1.1",
+  "hyperspy-gui-traitsui>=2.1.1",
+  "intervaltree>=3.2.1",
+  "prettytable>=3.18.0",
+  "pyqt5>=5.15.11",
+  "scikit-image>=0.26.0",
+  "scikit-learn>=1.9.0",
+  "seaborn>=0.13.2",
+  "tqdm>=4.68.3",
+  "traits>=7.1.0",
 ]
 
 [project.entry-points."hyperspy.extensions"]
@@ -56,21 +59,20 @@ espm = "espm"
 file = "Licence.txt"
 
 [project.optional-dependencies]
-"dev" = [
-  "numpydoc",
-  "flake8",
-  "sphinx",
-  "setuptools",
-  "jupyterlab",
-  "wheel",
-  "sphinxcontrib-bibtex",
-  "memory_profiler",
-  "sphinx-rtd-theme",
-  "sphinx-copybutton",
-  "sphinx-gallery",
-  "nbsphinx",
-  "pandoc",
-  "pytest"
+dev = [
+    "cython>=3.2.8",
+    "flake8>=7.3.0",
+    "jupyterlab>=4.6.1",
+    "memory-profiler>=0.61.0",
+    "nbsphinx>=0.9.8",
+    "numpydoc>=1.10.0",
+    "pandoc>=2.4",
+    "pytest>=9.1.1",
+    "sphinx>=9.0.4",
+    "sphinx-copybutton>=0.5.2",
+    "sphinx-gallery>=0.21.0",
+    "sphinx-rtd-theme>=3.1.0",
+    "sphinxcontrib-bibtex>=2.7.0",
 ]
 
 [project.urls]
