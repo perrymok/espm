@@ -127,7 +127,7 @@ class EDSespm(EDSTEMSpectrum) :
             shape = self.axes_manager[1].size, self.axes_manager[0].size, self.axes_manager[2].size
             self._X = self.data.reshape((shape[0]*shape[1], shape[2])).T
         return self._X
-    
+
     @property
     def G(self) :
         r"""
@@ -151,7 +151,6 @@ class EDSespm(EDSTEMSpectrum) :
             mod_pars = get_metadata(self)
             self.model_ = EDXS(**mod_pars, custom_init=self.custom_init_)
         return self.model_
-
 
     def build_G(self, problem_type = "bremsstrahlung",ignored_elements = ['Cu'],*, elements_dict = {}) :
         r"""
@@ -186,7 +185,6 @@ class EDSespm(EDSTEMSpectrum) :
         self.metadata.EDS_model.separated_lines = elements_dict
         self.metadata.EDS_model.elements = self.model.model_elts
         self.metadata.EDS_model.norm = self.model.norm
-
 
     def set_analysis_parameters (self, thickness = 200e-7, density = 3.5, detector_type = "SDD_efficiency.txt", width_slope = 0.01, width_intercept = 0.065, xray_db = "default_xrays.json") :
         r"""
@@ -588,7 +586,6 @@ class EDSespm(EDSTEMSpectrum) :
         ranges_list = [(values[2*i-1],values[2*i]) for i in range(1,num+1)]
         return ranges_list
 
-
     def decomposition(
         self,
         normalize_poissonian_noise=False,
@@ -850,7 +847,6 @@ class EDSespm(EDSTEMSpectrum) :
             return mprimes_est, estimated_binning  
         else :
             return estimated_binning
-
 
 #######################
 # Auxiliary functions #
