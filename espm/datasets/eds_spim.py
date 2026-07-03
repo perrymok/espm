@@ -29,6 +29,13 @@ from hyperspy.signal_tools import Signal1DRangeSelector
 from hyperspy.ui_registry import get_gui
 import intervaltree
 
+import hyperspy.api as hs
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+from espm.utils import num_to_symbol
+from scipy.optimize import curve_fit
+import hyperspy.events
+
 NPT = json.load(open(NUMBER_PERIODIC_TABLE))
 
 class EDSespm(EDSTEMSpectrum) : 
@@ -186,31 +193,6 @@ class EDSespm(EDSTEMSpectrum) :
         self.metadata.EDS_model.separated_lines = elements_dict
         self.metadata.EDS_model.elements = self.model.model_elts
         self.metadata.EDS_model.norm = self.model.norm
-
-    def update_G(self, part_W=None, G=None):
-        r"""
-        Update the absortion part of the bremsstrahlung of the G matrix.
-        """
-        try : 
-            nelts = (self.metadata.EDS_model.elements).copy()
-
-            for i in self.stoichiometries :
-                nelts.remove(i)
-
-            for i, elt in enumerate(nelts) : 
-                r = re.match(r'.*_lo',elt)
-                t = re.match(r'.*_hi',elt)
-                if r : 
-                    nelts[i] = nelts[i][:-3]
-                if t : 
-                    nelts[i] = nelts[i][:-3]
-            nelts = list(dict.fromkeys(nelts))
-
-            g_params = {"g_type" : self.problem_type, "elements" : nelts, "reference_elt" : self.reference_elt, "stoichiometries" : self.stoichiometries}
-        except AttributeError : 
-            g_params = {"g_type" : self.problem_type, "elements" : self.metadata.Sample.elements, "reference_elt" : self.reference_elt, "stoichiometries" : self.stoichiometries}
-        G = G_EDXS(self.model, g_params, part_W=part_W, G=G)
-        return G
 
     def set_analysis_parameters (self, thickness = 200e-7, density = 3.5, detector_type = "SDD_efficiency.txt", width_slope = 0.01, width_intercept = 0.065, xray_db = "default_xrays.json") :
         r"""
