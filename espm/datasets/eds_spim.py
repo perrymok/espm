@@ -1022,7 +1022,7 @@ class EDSespm(EDSTEMSpectrum) :
 
 
 
-        if (self.learning_results.navigation_mask is not None) and use_nav_mask==True:
+        if (self.learning_results.navigation_mask is not None) and use_nav_mask:
             H = self.fix_masked_H()
 
      

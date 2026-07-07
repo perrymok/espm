@@ -246,7 +246,7 @@ class NMFEstimator(ABC, TransformerMixin, BaseEstimator):
         else : 
             self.X_ = validate_data(self,X, dtype=[np.float64, np.float32])
 
-        if self.hspy_comp==False:
+        if not self.hspy_comp:
             try:
                 import inspect
                 curframe = inspect.currentframe()
