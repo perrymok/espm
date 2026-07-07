@@ -195,13 +195,13 @@ class EDSespm(EDSTEMSpectrum) :
 
     def set_analysis_parameters(
         self,
-        thickness = 200e-7,
-        density = 3.5,
-        detector_type = "SDD_efficiency.txt",
-        width_slope = 0.01,
-        width_intercept = 0.065,
-        geom_eff = None,
-        xray_db = "default_xrays.json"
+        thickness=None,
+        density=None,
+        detector_type=None,
+        width_slope=None,
+        width_intercept=None,
+        geom_eff=None,
+        xray_db=None
     ):
         r"""
         Set the relevant parameters for the analysis in the metadata of the :class:`EDSespm` object.
@@ -894,6 +894,8 @@ class EDSespm(EDSTEMSpectrum) :
         
         return roi
     
+    class MatplotlibBackendError(ValueError):
+        pass
     
     def generate_manual_mask(self, n_classes = 3, mask_alpha = 0.75):
         r"""
@@ -915,18 +917,18 @@ class EDSespm(EDSTEMSpectrum) :
         Note: The generated mask is saved as a NumPy array in the current working directory.
         """
         import matplotlib.pyplot as plt
-        from IPython.display import display
-
+        
         try:
             from mpl_interactions import image_segmenter
+        except:
+            raise ImportError("Module 'mpl_interactions' is not installed.")
+        
+        try:
             import ipywidgets as widgets
-        except ImportError as e:
-            raise ImportError(f'Optional dependencies "[manualmask]" are not installed.') from e
-
+        except:
+            raise ImportError("Module 'ipywidgets' is not installed.")
+        
         if plt.get_backend() != 'module://ipympl.backend_nbagg':
-            class MatplotlibBackendError(ValueError):
-                pass
-
             raise MatplotlibBackendError("Please switch to the 'ipympl' or 'widget' Matplotlib backend.")
         
         image = self.sum(axis = 2).data
