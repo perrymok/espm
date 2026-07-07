@@ -195,13 +195,13 @@ class EDSespm(EDSTEMSpectrum) :
 
     def set_analysis_parameters(
         self,
-        thickness : float = 200e-7,
-        density : float = 3.5,
-        detector_type : str | dict = "SDD_efficiency.txt",
-        width_slope : float = 0.01,
-        width_intercept : float = 0.065,
+        thickness : float = None,
+        density : float = None,
+        detector_type : str | dict = None,
+        width_slope : float = None,
+        width_intercept : float = None,
         geom_eff : float = None,
-        xray_db : str = "default_xrays.json"
+        xray_db : str = None
     ) -> None :
         r"""
         Set the relevant parameters for the analysis in the metadata of the :class:`EDSespm` object.
