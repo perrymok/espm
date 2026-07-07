@@ -823,7 +823,7 @@ class EDSespm(EDSTEMSpectrum):
         Examples
         --------
         >>> s = exspy.data.EDS_TEM_FePt_nanoparticles()
-        >>> si = hs.stack([s]*3)
+        >>> si = hs.stack([s] * 3)
         >>> si.change_dtype(float)
         >>> si.decomposition()
 

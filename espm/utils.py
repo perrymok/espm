@@ -341,9 +341,9 @@ def check_keys(params, d_params, upperkeys="", toprint=True, replace=True):
 
     Examples
     --------
-    >>> params = {'a':1,'b':2}
-    >>> d_params = {'a':1,'b':2,'c':3}
-    >>> check_keys(params,d_params)
+    >>> params = {"a": 1, "b": 2}
+    >>> d_params = {"a": 1, "b": 2, "c": 3}
+    >>> check_keys(params, d_params)
     >>> params
     {'a': 1, 'b': 2, 'c': 3}
 

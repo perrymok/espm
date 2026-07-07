@@ -30,11 +30,11 @@ def toy_weights(**kwargs):
         >>> from espm.weights.generate_weights import toy_weights
         >>> import matplotlib.pyplot as plt
         >>> weights = toy_weights()
-        >>> fig = plt.figure(figsize=(10,3))
-        >>> axs = fig.subplots(1,3)
+        >>> fig = plt.figure(figsize=(10, 3))
+        >>> axs = fig.subplots(1, 3)
         >>> for i in range(3):
-        ...     axs[i].imshow(weights[:,:,i], cmap=plt.cm.gray_r)
-        ...     axs[i].set_title(f"Map {i+1}")
+        ...     axs[i].imshow(weights[:, :, i], cmap=plt.cm.gray_r)
+        ...     axs[i].set_title(f"Map {i + 1}")
         >>> fig.show()
 
     """
@@ -75,12 +75,12 @@ def random_weights(shape_2d, n_phases=3, seed=0):
 
         >>> from espm.weights.generate_weights import random_weights
         >>> import matplotlib.pyplot as plt
-        >>> weights = random_weights((100,100))
-        >>> fig = plt.figure(figsize=(10,3))
-        >>> axs = fig.subplots(1,3)
+        >>> weights = random_weights((100, 100))
+        >>> fig = plt.figure(figsize=(10, 3))
+        >>> axs = fig.subplots(1, 3)
         >>> for i in range(3):
-        ...     axs[i].imshow(weights[:,:,i], cmap=plt.cm.gray_r)
-        ...     axs[i].set_title(f"Map {i+1}")
+        ...     axs[i].imshow(weights[:, :, i], cmap=plt.cm.gray_r)
+        ...     axs[i].set_title(f"Map {i + 1}")
         >>> fig.show()
 
     """
@@ -120,12 +120,12 @@ def laplacian_weights(shape_2d, n_phases=3, seed=0, size_x=10, size_y=10, **kwar
         >>> import numpy as np
         >>> import matplotlib.pyplot as plt
         >>> from espm.weights.generate_weights import laplacian_weights
-        >>> weights = laplacian_weights((100,100), 3, 0)
-        >>> fig = plt.figure(figsize=(10,3))
-        >>> axs = fig.subplots(1,3)
+        >>> weights = laplacian_weights((100, 100), 3, 0)
+        >>> fig = plt.figure(figsize=(10, 3))
+        >>> axs = fig.subplots(1, 3)
         >>> for i in range(3):
-        ...     axs[i].imshow(weights[:,:,i], cmap=plt.cm.gray_r)
-        ...     axs[i].set_title(f"Map {i+1}")
+        ...     axs[i].imshow(weights[:, :, i], cmap=plt.cm.gray_r)
+        ...     axs[i].set_title(f"Map {i + 1}")
         >>> fig.show()
 
     """
@@ -162,12 +162,12 @@ def gaussian_ripple_weights(shape_2d, width=1, seed=0, **kwargs):
 
         >>> from espm.weights.generate_weights import gaussian_ripple_weights
         >>> import matplotlib.pyplot as plt
-        >>> weights = gaussian_ripple_weights((100,100), 20, 0)
-        >>> fig = plt.figure(figsize=(5,2))
-        >>> axs = fig.subplots(1,2)
+        >>> weights = gaussian_ripple_weights((100, 100), 20, 0)
+        >>> fig = plt.figure(figsize=(5, 2))
+        >>> axs = fig.subplots(1, 2)
         >>> for i in range(2):
-        ...     axs[i].imshow(weights[:,:,i], cmap=plt.cm.gray_r)
-        ...     axs[i].set_title(f"Map {i+1}")
+        ...     axs[i].imshow(weights[:, :, i], cmap=plt.cm.gray_r)
+        ...     axs[i].set_title(f"Map {i + 1}")
         >>> fig.show()
 
     """
@@ -216,12 +216,12 @@ def spheres_weights(shape_2d=[80, 80], n_phases=3, seed=0, radius=1, **kwargs):
 
         >>> from espm.weights.generate_weights import spheres_weights
         >>> import matplotlib.pyplot as plt
-        >>> weights = spheres_weights((100,100), 3, 0, 20)
-        >>> fig = plt.figure(figsize=(10,3))
-        >>> axs = fig.subplots(1,3)
+        >>> weights = spheres_weights((100, 100), 3, 0, 20)
+        >>> fig = plt.figure(figsize=(10, 3))
+        >>> axs = fig.subplots(1, 3)
         >>> for i in range(3):
-        ...     axs[i].imshow(weights[:,:,i], cmap=plt.cm.gray_r)
-        ...     axs[i].set_title(f"Map {i+1}")
+        ...     axs[i].imshow(weights[:, :, i], cmap=plt.cm.gray_r)
+        ...     axs[i].set_title(f"Map {i + 1}")
         >>> fig.show()
 
     """
@@ -259,12 +259,12 @@ def wedge_weights(shape_2d=[80, 80]):
 
         >>> from espm.weights.generate_weights import wedge_weights
         >>> import matplotlib.pyplot as plt
-        >>> weights = wedge_weights((100,100))
-        >>> fig = plt.figure(figsize=(5,2))
-        >>> axs = fig.subplots(1,2)
+        >>> weights = wedge_weights((100, 100))
+        >>> fig = plt.figure(figsize=(5, 2))
+        >>> axs = fig.subplots(1, 2)
         >>> for i in range(2):
-        ...     axs[i].imshow(weights[:,:,i], cmap=plt.cm.gray_r)
-        ...     axs[i].set_title(f"Map {i+1}")
+        ...     axs[i].imshow(weights[:, :, i], cmap=plt.cm.gray_r)
+        ...     axs[i].set_title(f"Map {i + 1}")
         >>> fig.show()
 
     """

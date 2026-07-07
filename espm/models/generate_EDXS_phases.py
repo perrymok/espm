@@ -72,7 +72,12 @@ def unique_elts(dict_list):
 
     Examples
     --------
-    >>> unique_elts([{"elements_dict" : {"18" : 0.2, "8" : 0.5, "12" : 0.3}}, {"elements_dict" : {"8" : 0.5, "26" : 0.3, "14" : 0.2}}])
+    >>> unique_elts(
+    ...     [
+    ...         {"elements_dict": {"18": 0.2, "8": 0.5, "12": 0.3}},
+    ...         {"elements_dict": {"8": 0.5, "26": 0.3, "14": 0.2}},
+    ...     ]
+    ... )
     ['18', '8', '12', '26', '14']
 
     """
@@ -149,8 +154,13 @@ def generate_modular_phases(
 
         >>> from espm.models.generate_EDXS_phases import generate_modular_phases
         >>> import matplotlib.pyplot as plt
-        >>> phases = generate_modular_phases(elts_dicts = [{"8": 0.5, "14": 0.2, "26": 0.3}, {"8" : 0.5, "23" : 0.3, "7" : 0.2}],
-        ... brstlg_pars = [{"b0" : 0.03, "b1" : 0.01}, {"b0" : 0.002, "b1" : 0.0025}])
+        >>> phases = generate_modular_phases(
+        ...     elts_dicts=[
+        ...         {"8": 0.5, "14": 0.2, "26": 0.3},
+        ...         {"8": 0.5, "23": 0.3, "7": 0.2},
+        ...     ],
+        ...     brstlg_pars=[{"b0": 0.03, "b1": 0.01}, {"b0": 0.002, "b1": 0.0025}],
+        ... )
         >>> plt.plot(phases[0])
         >>> plt.plot(phases[1])
 

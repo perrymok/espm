@@ -113,11 +113,11 @@ class Abundance(object):
         --------
         >>> from espm.weights.abundance import Abundance
         >>> from matplotlib import pyplot as plt
-        >>> shape_2d = (100,100)
+        >>> shape_2d = (100, 100)
         >>> n_phases = 2
         >>> wedge = Abundance(shape_2d, n_phases)
-        >>> wedge.add_wedge((0,0), 50, 50, 0.0, 1.0, 1)
-        >>> plt.imshow(wedge.weights[:,:,1])
+        >>> wedge.add_wedge((0, 0), 50, 50, 0.0, 1.0, 1)
+        >>> plt.imshow(wedge.weights[:, :, 1])
         """
         assert phase_id != 0, (
             "The phase_id cannot be 0, it has to be between 1 and n_phases-1."
@@ -173,11 +173,11 @@ class Abundance(object):
         --------
         >>> from espm.weights.abundance import Abundance
         >>> from matplotlib import pyplot as plt
-        >>> shape_2d = (100,100)
+        >>> shape_2d = (100, 100)
         >>> n_phases = 2
         >>> sphere = Abundance(shape_2d, n_phases)
-        >>> sphere.add_sphere((50,50), 30, 1.0, 1)
-        >>> plt.imshow(sphere.weights[:,:,1])
+        >>> sphere.add_sphere((50, 50), 30, 1.0, 1)
+        >>> plt.imshow(sphere.weights[:, :, 1])
 
         """
         assert phase_id != 0, (
@@ -219,11 +219,11 @@ class Abundance(object):
         --------
         >>> from espm.weights.abundance import Abundance
         >>> from matplotlib import pyplot as plt
-        >>> shape_2d = (100,100)
+        >>> shape_2d = (100, 100)
         >>> n_phases = 2
         >>> gaussian_ripple = Abundance(shape_2d, n_phases)
         >>> gaussian_ripple.add_gaussian_ripple(50, 15, 1.0, 1)
-        >>> plt.imshow(gaussian_ripple.weights[:,:,1])
+        >>> plt.imshow(gaussian_ripple.weights[:, :, 1])
 
         """
         assert phase_id != 0, (
@@ -262,11 +262,11 @@ class Abundance(object):
         --------
         >>> from espm.weights.abundance import Abundance
         >>> from matplotlib import pyplot as plt
-        >>> shape_2d = (100,100)
+        >>> shape_2d = (100, 100)
         >>> n_phases = 2
         >>> laplacian = Abundance(shape_2d, n_phases)
         >>> laplacian.add_laplacian(1, 1, 0.0, 1.0, 10, 10)
-        >>> plt.imshow(laplacian.weights[:,:,1])
+        >>> plt.imshow(laplacian.weights[:, :, 1])
 
         """
         assert phase_id != 0, (
@@ -309,11 +309,11 @@ class Abundance(object):
         --------
         >>> from espm.weights.abundance import Abundance
         >>> from matplotlib import pyplot as plt
-        >>> shape_2d = (100,100)
+        >>> shape_2d = (100, 100)
         >>> n_phases = 2
         >>> random = Abundance(shape_2d, n_phases)
         >>> random.add_random(1, 1, 0.0, 1.0)
-        >>> plt.imshow(random.weights[:,:,1])
+        >>> plt.imshow(random.weights[:, :, 1])
 
         """
         assert phase_id != 0, (
@@ -348,12 +348,12 @@ class Abundance(object):
         >>> from espm.weights.abundance import Abundance
         >>> import hyperspy.api as hs
         >>> from matplotlib import pyplot as plt
-        >>> shape_2d = (512,512)
+        >>> shape_2d = (512, 512)
         >>> n_phases = 2
         >>> image = Abundance(shape_2d, n_phases)
         >>> data = hs.datasets.example_signals.object_hologram()
         >>> image.add_image(data.data, 1, 0.0, 1.0)
-        >>> plt.imshow(image.weights[:,:,1])
+        >>> plt.imshow(image.weights[:, :, 1])
         """
         assert phase_id != 0, (
             "The phase_id cannot be 0, it has to be between 1 and n_phases-1."

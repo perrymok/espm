@@ -348,7 +348,7 @@ def elts_dict_from_dict_list(dict_list):
     --------
     >>> import numpy as np
     >>> from espm.models.EDXS_function import elts_dict_from_dict_list
-    >>> dicts = [{"Si" : 1.0},{"Ca" : 1.0},{"O" : 1.0},{"C" : 1.0}]
+    >>> dicts = [{"Si": 1.0}, {"Ca": 1.0}, {"O": 1.0}, {"C": 1.0}]
     >>> elts_dict_from_dict_list(dicts)
         {"Si" : 0.25, "Ca" : 0.25, "O" : 0.25, "C" : 0.25}
 
@@ -381,7 +381,12 @@ def elts_list_from_dict_list(dict_list):
     --------
     >>> import numpy as np
     >>> from espm.models.EDXS_function import elts_list_from_dict_list
-    >>> dicts = [{"Si" : 1.0, "C" : 0.5, "O" : 0.5},{"Ca" : 1.0, "K" : 2.0},{"O" : 1.0, "Si" : 0.5},{"C" : 1.0}]
+    >>> dicts = [
+    ...     {"Si": 1.0, "C": 0.5, "O": 0.5},
+    ...     {"Ca": 1.0, "K": 2.0},
+    ...     {"O": 1.0, "Si": 0.5},
+    ...     {"C": 1.0},
+    ... ]
     >>> elts_list_from_dict_list(dicts)
         ["Si","Ca","O","C","K"]
     """

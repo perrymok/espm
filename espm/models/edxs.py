@@ -382,9 +382,9 @@ class EDXS(PhysicalModel):
             >>> from espm.models.edxs import EDXS
             >>> from espm.conf import DEFAULT_EDXS_PARAMS
             >>> b0, b1 = 5.5367e-5, 0.00192181
-            >>> elts_dict = {"Si" : 1.0,"Ca" : 1.0,"O" : 3.0,"C" : 0.3}
+            >>> elts_dict = {"Si": 1.0, "Ca": 1.0, "O": 3.0, "C": 0.3}
             >>> model = EDXS(**DEFAULT_EDXS_PARAMS)
-            >>> spectrum = model.generate_spectrum(b0,b1, elements_dict = elts_dict)
+            >>> spectrum = model.generate_spectrum(b0, b1, elements_dict=elts_dict)
             >>> plt.plot(spectrum)
 
         Notes

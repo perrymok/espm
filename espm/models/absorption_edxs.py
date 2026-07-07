@@ -243,9 +243,9 @@ def det_efficiency(x, det_dict):
     >>> import numpy as np
     >>> dict = {"detection" : {"thickness" : 10e-3, "density" : 2.3, "atomic_fraction" : False, "elements_dict" : {"Si" : 1.0}},
     >>> "dead_layer" : {"thickness" : 50e-7, "density" : 2.7, "atomic_fraction" : False, "elements_dict" : {"Al" : 1.0}}}
-    >>> x = np.linspace(0.5,20,num = 1000)
-    >>> efficiency = det_efficiency(x,dict)
-    >>> plt.plot(x,efficiency)
+    >>> x = np.linspace(0.5, 20, num=1000)
+    >>> efficiency = det_efficiency(x, dict)
+    >>> plt.plot(x, efficiency)
 
     """
     efficiency = np.ones_like(x)
