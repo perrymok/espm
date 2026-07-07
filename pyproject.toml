@@ -74,11 +74,6 @@ dev = [
     "sphinx-rtd-theme>=3.1.0",
     "sphinxcontrib-bibtex>=2.7.0",
 ]
-manualmask = [
-    "ipympl>=0.10.0",
-    "ipywidgets>=8.1.8",
-    "mpl-interactions>=0.24.2",
-]
 
 [project.urls]
 "Homepage" = "https://espm.readthedocs.io/en/latest/"

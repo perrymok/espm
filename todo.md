@@ -13,6 +13,11 @@
 
 # 1.1.4. 
 
-* `cross_section_utils.py` needs to be worked on :
+* `cross_section_utils.py` :
     * tests need to be made.
     * We should work on a common framework for modifying xray lines with different methods.
+
+* `eds_spim.py` : 
+    * Re-work the mask selection tools without using mpl-interactions, if possible
+    * For the future, it would be nice to simplify the fixed_H / fixed_W usage
+    * tests on fixed H

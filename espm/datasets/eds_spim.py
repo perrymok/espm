@@ -27,7 +27,7 @@ from hyperspy.signal_tools import Signal1DRangeSelector
 from hyperspy.ui_registry import get_gui
 import intervaltree
 
-from hyperspy.roi import RectangularROI
+from hyperspy.roi import RectangularROI, BaseROI
 import hyperspy.api as hs
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -54,7 +54,7 @@ class EDSespm(EDSTEMSpectrum) :
     # Properties #
     ##############
 
-    def _set_default_analysis_params(self) :
+    def _set_default_analysis_params(self) -> None :
         # TODO : make them fetch preferences from the user 
         md = self.metadata
         md.Signal.signal_type = "EDS_espm"
@@ -70,7 +70,7 @@ class EDSespm(EDSTEMSpectrum) :
         if "Acquisition_instrument.TEM.Stage.tilt_beta" not in md :
             md.set_item("Acquisition_instrument.TEM.Stage.tilt_beta", 0.0)
 
-    def _check_metadata_G(self) : 
+    def _check_metadata_G(self) -> None : 
         md = self.metadata
 
         if "Sample.elements" not in md :
@@ -92,7 +92,7 @@ class EDSespm(EDSTEMSpectrum) :
         if "xray_db" not in md :
             raise ValueError("The xray database is missing in the metadata. Please use the set_analysis_parameters method to set the xray database.")
         
-    def _check_metadata_quantification(self) : 
+    def _check_metadata_quantification(self) -> None : 
         md = self.metadata
 
         if "Acquisition_instrument.TEM.Detector.EDS.geometric_efficiency" not in md :
@@ -103,7 +103,7 @@ class EDSespm(EDSTEMSpectrum) :
             raise ValueError("The acquisition time is missing in the metadata. Please use the set_microscope_parameters method to set the acquisition time.")
         
     @property
-    def custom_init (self) :
+    def custom_init (self) -> bool :
         r"""
         Boolean setting whether using the custom_init (see espm.models.EDXS) or not.
         If True, the custom_init will be used to initialise the decomposition.
@@ -113,11 +113,11 @@ class EDSespm(EDSTEMSpectrum) :
         return self.custom_init_
     
     @custom_init.setter
-    def custom_init (self, value) :
+    def custom_init (self, value : bool) -> None :
         self.custom_init_ = value
 
     @property
-    def shape_2d (self) : 
+    def shape_2d (self) -> tuple[int] : 
         r"""
         Shape of the data in the spatial dimension.
         """
@@ -126,7 +126,7 @@ class EDSespm(EDSTEMSpectrum) :
         return self.shape_2d_
 
     @property
-    def X (self) :
+    def X (self) -> np.ndarray :
         r"""
         The data in the form of a 2D array of shape (n_samples, n_features).
         """
@@ -136,7 +136,7 @@ class EDSespm(EDSTEMSpectrum) :
         return self._X
 
     @property
-    def G(self) :
+    def G(self)  -> np.ndarray  :
         r"""
         The G matrix of the :class:`espm.models.EDXS` model corresponding to the metadata of the :class:`EDSespm` object.
         """
@@ -150,7 +150,7 @@ class EDSespm(EDSTEMSpectrum) :
         return self.G_
 
     @property
-    def model (self) :
+    def model (self) -> EDXS :
         r"""
         The :class:`espm.models.EDXS` model corresponding to the metadata of the :class:`EDSespm` object.
         """ 
@@ -159,7 +159,7 @@ class EDSespm(EDSTEMSpectrum) :
             self.model_ = EDXS(**mod_pars, custom_init=self.custom_init_)
         return self.model_
 
-    def build_G(self, problem_type = "bremsstrahlung",ignored_elements = ['Cu'],*, elements_dict = {}) :
+    def build_G(self, problem_type : str = "bremsstrahlung",ignored_elements : list[str] = ['Cu'],*, elements_dict : dict[str,float] = {}) -> None :
         r"""
         Build the G matrix of the :class:`espm.models.EDXS` model corresponding to the metadata of the :class:`EDSespm` object and stores it as an attribute.
 
@@ -195,14 +195,14 @@ class EDSespm(EDSTEMSpectrum) :
 
     def set_analysis_parameters(
         self,
-        thickness = 200e-7,
-        density = 3.5,
-        detector_type = "SDD_efficiency.txt",
-        width_slope = 0.01,
-        width_intercept = 0.065,
-        geom_eff = None,
-        xray_db = "default_xrays.json"
-    ):
+        thickness : float = 200e-7,
+        density : float = 3.5,
+        detector_type : str | dict = "SDD_efficiency.txt",
+        width_slope : float = 0.01,
+        width_intercept : float = 0.065,
+        geom_eff : float = None,
+        xray_db : str = "default_xrays.json"
+    ) -> None :
         r"""
         Set the relevant parameters for the analysis in the metadata of the :class:`EDSespm` object.
 
@@ -258,7 +258,7 @@ class EDSespm(EDSTEMSpectrum) :
     # Helper functions for NMF #
     ############################
 
-    def carto_fixed_W(self, brstlg_comps = 1) : 
+    def carto_fixed_W(self, brstlg_comps : int = 1) -> np.ndarray : 
         r"""
         Helper function to create a fixed_W matrix for chemical mapping. It will output a matrix 
         It can be used to make a decomposition with as many components as they are  chemical elements and then allow each component to have only one of each element.
@@ -290,8 +290,7 @@ class EDSespm(EDSTEMSpectrum) :
 
         return W
 
-
-    def set_fixed_W (self,phases_dict) : 
+    def set_fixed_W (self,phases_dict : dict[str,float]) -> np.ndarray : 
         r"""
         Helper function to create a fixed_W matrix. The output matrix will have -1 entries except for the elements (and bremsstrahlung parameters) that are present in the phases_dict dictionary.
         In the output (fixed_W) matrix, the -1 entries will be ignored during the decomposition using :class:`espm.estimator.NMFEstimator` are normally learned while the non-negative entries will be fixed to the values given in the phases_dict dictionary.
@@ -340,7 +339,11 @@ class EDSespm(EDSTEMSpectrum) :
                     W[indices[conv_elts.index(key)],p] = phases_dict[phase][key]
         return W
     
-    def print_concentration_report (self, selected_elts = [], W_input = None, fit_error = True, disclaimer = True) : 
+    def print_concentration_report (self,
+                                    selected_elts : list[str] = [],
+                                    W_input : np.ndarray = None,
+                                    fit_error : bool = True,
+                                    disclaimer : bool = True) -> None : 
         r"""
         Print a report of the chemical concentrations from a fitted W.
 
@@ -396,7 +399,7 @@ class EDSespm(EDSTEMSpectrum) :
     # Bremsstrahlung functions #
     ############################
 
-    def estimate_mass_thickness(self, ignored_elements = ['Cu'], tol = 1e-8,*, elements_dict = {}) :
+    def estimate_mass_thickness(self, ignored_elements : list[str] = ['Cu'], tol : float = 1e-8,*, elements_dict : dict = {}) -> None :
         r"""
         Based on the complete metadata of the :class:`EDSespm` object, this function estimates the mass thickness of the sample. This function derives the mass-thickness from the characteristic X-rays. Then the bremsstrahlung parameters are estimated using that mass-thickness. The process is then repeated ten times to ensure convergence. The results are plotted on the spectrum.
 
@@ -866,14 +869,14 @@ class EDSespm(EDSTEMSpectrum) :
 
 
 
-    def define_ROI(self):
+    def define_ROI(self, xray_lines : bool = True) -> RectangularROI :
         r"""
         A function to define a rectangular ROI on an HyperSpy EDXS signal.
         
         Parameters
         ----------
-        data : hs.signals.EDSTEMSpectrum
-            Input EDXS datacube.
+        xray_lines : bool
+            If True, it displays the xray lines markers ok exspy. It might slow down the execution though.
             
         Returns
         -------
@@ -891,80 +894,18 @@ class EDSespm(EDSTEMSpectrum) :
         roi = RectangularROI(left = centre_x - dx, top = centre_y - dy, right = centre_x + dx, bottom = centre_y + dy)
         self.plot()
         imr = roi.interactive(self, color = 'r')
+        selected_spectrum = hs.interactive(imr.mean)
+        selected_spectrum.metadata.General.title = "Spectrum of the selected area"
+        selected_spectrum.plot(xray_lines = xray_lines)
         
         return roi
     
-    
-    def generate_manual_mask(self, n_classes = 3, mask_alpha = 0.75):
-        r"""
-        Function used to manually draw a mask with multiple classes on the summed spatial map of the data.
-        [Warning] This function requires the 'mpl_interactions', 'ipywidgets' and, optionally, 'ipympl' modules to be installed.
-        [Warning] Using this function requires restarting the IPython kernel since it changes the Matplotlib backend.
-        
-        Parameters
-        ----------
-        n_classes : int
-            The number of classes to be used for the mask.
-        mask_alpha : float
-            The transparency of the mask.
-        
-        Returns
-        -------
-        None
-        
-        Note: The generated mask is saved as a NumPy array in the current working directory.
-        """
-        import matplotlib.pyplot as plt
-        from IPython.display import display
-
-        try:
-            from mpl_interactions import image_segmenter
-            import ipywidgets as widgets
-        except ImportError as e:
-            raise ImportError(f'Optional dependencies "[manualmask]" are not installed.') from e
-
-        if plt.get_backend() != 'module://ipympl.backend_nbagg':
-            class MatplotlibBackendError(ValueError):
-                pass
-
-            raise MatplotlibBackendError("Please switch to the 'ipympl' or 'widget' Matplotlib backend.")
-        
-        image = self.sum(axis = 2).data
-
-        class_selector = widgets.Dropdown(options=list(range(1, n_classes + 1)), description = "class")
-
-
-        def update(change):
-            multi_class_segmenter.current_class = class_selector.value
-            multi_class_segmenter.erasing = erasing_button.value
-            
-        def on_done_clicked(b):
-            np.save(f"mask_{n_classes}_classes.npy", multi_class_segmenter.mask)
-            print("Mask saved!")
-
-
-        erasing_button = widgets.Checkbox(value = False, description = "Erasing")
-        erasing_button.observe(update, names = "value")
-
-        class_selector.observe(update, names = "value")
-        multi_class_segmenter = image_segmenter(image, nclasses = n_classes, mask_alpha = mask_alpha)
-        
-        done_button = widgets.Button(description = "Done", disabled = False, button_style = "success", tooltip = "Save mask", icon = "check")
-        done_button.on_click(on_done_clicked)
-        
-        display(widgets.HBox([erasing_button, class_selector, done_button]))
-        display(multi_class_segmenter)
-    
-    def generate_part_fixed_H_matrix(self, type = None, mask = None, ROIs = None, value = 1):
+    def generate_part_fixed_H_matrix(self, rois : list[RectangularROI] = None, value : float = 1) -> np.ndarray :
         r"""
         A function to generate a component of the fixed H matrix for one phase.
         
         Parameters
         ----------
-        type : str
-            Type of the fixed H matrix component. Can be 'mask', 'ROI' or 'not_fixed'.
-        mask : np.ndarray
-            A binary mask given by the user.
         ROIs : list
             A list of rectangular ROIs given by the user.
         value : float
@@ -977,40 +918,30 @@ class EDSespm(EDSTEMSpectrum) :
         """
         part_f_H = (-1) * np.ones(shape = (self.data.shape[0], self.data.shape[1]), dtype = float)
         
-        if value > 1 or value < 0:
-            raise ValueError("Value must be between 0 and 1.")
-        
-        if type is None:
-            raise ValueError("Type is not defined.")
-        
-        if type == 'not_fixed':
+        if value < 0 :
+            raise ValueError("Value must be above 0.")
+        # if value < 1 :
+        #     print("The value of some of the fixed_H matrix is below 1.0.",
+        #           "In most cases, it means that you want to use simplex_H = True and simplex_W = False in smoothNMF decomposition.")
+
+        if rois is None or rois == [] :
             return part_f_H
         
-        if type == 'mask':
-            if mask is None:
-                raise ValueError("Mask is not defined.")
-            else:
-                if mask.shape != (self.data.shape[0], self.data.shape[1]):
-                    raise ValueError("Mask shape does not match data shape.")
-                part_f_H[mask != 0] = value
-        
-        if type == 'ROI':
-            if ROIs is None:
-                raise ValueError("ROIs are not defined.")
-            else:
-                for i in range(len(ROIs)):
-                    region_parameters = ROIs[i].parameters
-                    scale_i = self.axes_manager[0].scale
-                    scale_j = self.axes_manager[1].scale
-                    j_min = int(region_parameters['left'] // scale_j)
-                    i_min = int(region_parameters['top'] // scale_i)
-                    j_max = int(region_parameters['right'] // scale_j)
-                    i_max = int(region_parameters['bottom'] // scale_i)
-                    part_f_H[i_min:i_max, j_min:j_max] = value
+        # We don't enter that part of the code if there are no ROIs so it should be fine
+        if issubclass(type(rois[0]), BaseROI) :
+            for roi in rois:
+                region_parameters = roi.parameters
+                scale_i = self.axes_manager[0].scale
+                scale_j = self.axes_manager[1].scale
+                j_min = int(region_parameters['left'] // scale_j)
+                i_min = int(region_parameters['top'] // scale_i)
+                j_max = int(region_parameters['right'] // scale_j)
+                i_max = int(region_parameters['bottom'] // scale_i)
+                part_f_H[i_min:i_max, j_min:j_max] = value
         
         return part_f_H
     
-    def set_fixed_H(self, areas_dict):
+    def set_fixed_H(self, areas_dict : dict[str,np.ndarray]) -> np.ndarray :
         r"""
         Helper function to generate a fixed H matrix for the SmoothNMF decomposition algorithm. The output matrix will have -1 entries except for the
         areas that are specified in the input dictionary. The -1 entries will be ignored during the decomposition and learned normally, while the
@@ -1070,8 +1001,6 @@ class EDSespm(EDSTEMSpectrum) :
         -------
         None
         """
-
-        #self.build_G()
         
         est = self.learning_results.decomposition_algorithm
         W = est.W_
