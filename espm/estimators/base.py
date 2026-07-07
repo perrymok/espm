@@ -279,7 +279,7 @@ class NMFEstimator(ABC, TransformerMixin, BaseEstimator):
                         + "If so, please set the compatibility argument 'hspy_comp' to True.\n\n"
                         + "If this argument is not set correctly, the function will not work properly!!!"
                     )
-            except:
+            except Exception:
                 pass
 
         # The algorithm does not work when full columns or lines of X are zero

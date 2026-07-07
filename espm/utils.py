@@ -490,10 +490,10 @@ def num_to_symbol(num):
     d = {str(i + 1): el for i, el in enumerate(symbol_list())}
     try:
         return d[num.split("_")[0]] + "_" + num.split("_")[1]
-    except:
+    except Exception:
         try:
             return d[num]
-        except:
+        except Exception:
             return num
 
 
