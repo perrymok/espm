@@ -1030,9 +1030,9 @@ class EDSespm(EDSTEMSpectrum) :
         WH = (W@H)
         WH = WH.reshape([G.shape[-1]]+list(self.data.shape[:-1]))[:-2]
 
-        if not skip_elements is None:
-            WH = WH[ [i for i,el in enumerate(els_names) if not el in skip_elements]]
-            els_names = [i for i in els_names if not i in skip_elements]
+        if skip_elements is not None:
+            WH = WH[ [i for i,el in enumerate(els_names) if el not in skip_elements]]
+            els_names = [i for i in els_names if i not in skip_elements]
             
 
         WH/=WH.sum(0)[np.newaxis,...]/100
@@ -1065,7 +1065,7 @@ class EDSespm(EDSTEMSpectrum) :
         self.quantification_signal.metadata.set_item("Signal.quantity" ,"Atomic %")
         self.quantification_signal.axes_manager[0].name = "Elements"
         if self.quantification_signal.metadata.has_item("Sample.xray_lines"):
-            self.quantification_signal.metadata.set_item("Sample.xray_lines" , [i for i in self.quantification_signal.metadata.Sample.xray_lines if not i.split("_")[0] in skip_elements])
+            self.quantification_signal.metadata.set_item("Sample.xray_lines" , [i for i in self.quantification_signal.metadata.Sample.xray_lines if i.split("_")[0] not in skip_elements])
         self.quantification_signal_1d = self.quantification_signal.as_signal1D(0)
         #hack to label elements. Horrible, I know.
         def label_elements():
@@ -1262,8 +1262,8 @@ class EDSespm(EDSTEMSpectrum) :
         else:
             sm.decomposition()
         # relevant elements in your sample
-        if not skip_elements is None:
-            sm.metadata.Sample.elements = [ i for i in sm.metadata.Sample.elements if not i in skip_elements]
+        if skip_elements is not None:
+            sm.metadata.Sample.elements = [ i for i in sm.metadata.Sample.elements if i not in skip_elements]
             sm.metadata.Sample.xray_lines = [i for i in sm.metadata.Sample.xray_lines if i.split("_")[0] in sm.metadata.Sample.elements]
         
         if use_comps is None: 
@@ -1290,7 +1290,7 @@ class EDSespm(EDSTEMSpectrum) :
         """
         line = hs.roi.Line2DROI(**kwargs)
         p1 = hs.signals.Signal2D(self.data.sum(-1))
-        if not self.learning_results.navigation_mask is None:
+        if self.learning_results.navigation_mask is not None:
             p1.data[self.learning_results.navigation_mask.reshape(self.data.shape[:-1])]=np.nan
         for i in range(2):
             p1.axes_manager[i].update_from(self.axes_manager[i],["units","scale","name","offset"])

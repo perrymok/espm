@@ -199,7 +199,7 @@ class SmoothNMF(NMFEstimator):
             print("The n_components parameter is set to 2")
             self.n_components = 2
         # Value checking of the parameters
-        if not(self.algo in ["l2_surrogate", "log_surrogate", "projected_gradient", "bmd"]) :
+        if self.algo not in ["l2_surrogate", "log_surrogate", "projected_gradient", "bmd"] :
             print("The algorithm must be 'l2_surrogate', 'log_surrogate', 'bmd' or 'projected_gradient'")
             print("The algorithm is set to 'log_surrogate'")
             self.algo = "log_surrogate"

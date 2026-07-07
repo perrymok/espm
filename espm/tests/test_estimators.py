@@ -5,7 +5,6 @@ from espm.estimators.base import normalization_factor
 import numpy as np
 from espm.models import EDXS
 from espm.weights import generate_weights
-from espm.datasets.base import generate_spim
 from espm.measures import trace_xtLx
 from espm.utils import create_laplacian_matrix
 from espm.models.generate_EDXS_phases import generate_modular_phases

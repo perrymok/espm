@@ -2,7 +2,6 @@ from espm.datasets.eds_spim import get_metadata
 import numpy as np
 from espm.datasets.base import generate_dataset, generate_spim_sample, sample_to_EDSespm, generate_spim
 from espm.models import EDXS
-from espm.models.generate_EDXS_phases import generate_brem_params, generate_random_phases, unique_elts
 import os
 import hyperspy.api as hs
 import shutil

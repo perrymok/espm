@@ -10,12 +10,8 @@ This module include bremsstrahlung modelling, database reading and dicts and lis
 import numpy as np
 from scipy.special import erfc
 from espm.models.absorption_edxs import det_efficiency_from_curve,det_efficiency,absorption_correction
-from espm.models import edxs as e
 from collections import Counter
-from espm.conf import SYMBOLS_PERIODIC_TABLE
-import json
 
-from espm.utils import number_to_symbol_list
     
 def gaussian(x, mu, sigma):
     r"""

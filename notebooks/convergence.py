@@ -8,7 +8,7 @@ from espm.weights import generate_weights as gw
 from espm.datasets.base import generate_spim_sample
 from espm.estimators.updates import initialize_algorithms
 from tqdm import tqdm
-from time import time, process_time
+from time import time
 
 
 # global parameters

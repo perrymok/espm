@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from espm.utils import create_laplacian_matrix 
 from scipy.sparse import lil_matrix
 from espm.models.base import PhysicalModel
-from sklearn.utils.validation import validate_data, check_array
+from sklearn.utils.validation import validate_data
 
 
 def normalization_factor (X, nc) : 
@@ -284,7 +284,7 @@ class NMFEstimator(ABC, TransformerMixin, BaseEstimator):
                                                           simplex_W = self.simplex_W,
                                                           physics_model = self.physics_model_)
 
-        if not(self.shape_2d is None) :
+        if self.shape_2d is not None :
             self.L_ = create_laplacian_matrix(*self.shape_2d)
         else : 
             self.L_ =lil_matrix((self.X_.shape[1],self.X_.shape[1]),dtype=np.float32)
@@ -298,7 +298,7 @@ class NMFEstimator(ABC, TransformerMixin, BaseEstimator):
         self.losses_ = []
         self.rel_ = []
         self.detailed_losses_ = []
-        if not(self.true_D is None) and not(self.true_H is None) : 
+        if self.true_D is not None and self.true_H is not None : 
             if (self.true_D.shape[1] == self.n_components) and (self.true_H.shape[0] == self.n_components) : 
                 self.angles_ = []
                 self.mse_ = []
@@ -332,7 +332,7 @@ class NMFEstimator(ABC, TransformerMixin, BaseEstimator):
                 # an error if the optimization is stoped with a keyboard interrupt. 
                 detailed_loss_ = self.detailed_loss_
 
-                if not(self.true_D is None) and not(self.true_H is None) :
+                if self.true_D is not None and self.true_H is not None :
                     if (self.true_D.shape[1] == self.n_components) and (self.true_H.shape[0] == self.n_components) : 
                         if self.simplex_H or self.simplex_W:
                             W, H = self.W_, self.H_ 
@@ -480,7 +480,7 @@ class NMFEstimator(ABC, TransformerMixin, BaseEstimator):
         """
         For debug purposes : return the evolution of losses. 
         """        
-        if not(self.true_D is None) and not(self.true_H is None) :
+        if self.true_D is not None and self.true_H is not None :
             mse_list = []
             angles_list = []
             for i in range(self.n_components) :
