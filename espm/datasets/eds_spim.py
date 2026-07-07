@@ -9,33 +9,44 @@ The main purpose of this class is to provide an easy and clean interface between
     - estimate best binning thanks to the method developed by G. Obozinski, N. Perraudin and M. Martinez Ruts.
     - set fixed W for the :class:`espm.estimators.NMFEstimator` decomposition
 """
-
-from exspy.signals import EDSTEMSpectrum
-from espm.models import EDXS
-from exspy.utils.eds import take_off_angle
-from espm.utils import number_to_symbol_list, get_explained_intensity_W, symbol_to_number_list
-import numpy as np
-from espm.estimators import NMFEstimator
-
+import json
 import warnings
+
+import numpy as np
+from scipy.optimize import curve_fit
 from prettytable import PrettyTable
 from tqdm import tqdm
-from espm.estimators import SmoothNMF
-from espm.conf import NUMBER_PERIODIC_TABLE
-import json
+import intervaltree
+# from functools import wraps
+
+from exspy.signals import EDSTEMSpectrum
+from exspy.utils.eds import take_off_angle
 from hyperspy.signal_tools import Signal1DRangeSelector
 from hyperspy.ui_registry import get_gui
-import intervaltree
 
 from hyperspy.roi import RectangularROI, BaseROI
 import hyperspy.api as hs
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-from espm.utils import num_to_symbol
-from scipy.optimize import curve_fit
 import hyperspy.events
 
+from espm.utils import num_to_symbol
+from espm.models import EDXS
+from espm.estimators import SmoothNMF, NMFEstimator
+from espm.conf import NUMBER_PERIODIC_TABLE
+from espm.utils import number_to_symbol_list, get_explained_intensity_W, symbol_to_number_list
+
 NPT = json.load(open(NUMBER_PERIODIC_TABLE))
+
+def _check_decomposition(func) -> bool :
+    # @wraps(func)
+    def inner(instance,*args,**kwargs) :
+        est = instance.learning_results.decomposition_algorithm
+        assert not(est is None), f"No decomposition was performed. Please, use the espm decomposition before running {func}"
+        assert issubclass(type(est),NMFEstimator), f"To use {func} you need to use an object that inherits NMFEstimator, e.g. SmoothNMF."
+        return func(instance,*args,**kwargs)
+
+    return inner
 
 class EDSespm(EDSTEMSpectrum) : 
     _signal_type = "EDS_espm"
@@ -727,10 +738,21 @@ class EDSespm(EDSTEMSpectrum) :
         )
         self.model_ = model_
 
-    def plot_1D_results(self, elements = []) :
-        if not(isinstance(self.learning_results.decomposition_algorithm,NMFEstimator)) :
-            raise ValueError("No espm learning results available, please run a decomposition with an espm algorithm first")
-        
+    @_check_decomposition
+    def plot_1D_results(self, xray_lines : bool = True,elements : list[str] = []) -> None :
+        r"""
+        Plots each spectrum (component) resulting from an espm decompositions.
+        It shows the contribution of each selected element and the total model.
+
+        Parameters
+        ----------
+        elements : list[str]
+            list of elements to display
+
+        Results
+        -------
+        None
+        """
         W = self.learning_results.decomposition_algorithm.W_
         G = self.learning_results.decomposition_algorithm.G_
         H = self.learning_results.decomposition_algorithm.H_.mean(axis = 1)
@@ -740,7 +762,7 @@ class EDSespm(EDSTEMSpectrum) :
             return elements
         
         spectrum_1D = self.mean()
-        spectrum_1D.plot(True)
+        spectrum_1D.plot(xray_lines = xray_lines)
         spectrum_1D._plot.signal_plot.ax.plot(spectrum_1D.axes_manager.signal_axes[0].axis, G@W@H, 'b-', label = 'Full model')
         
         conv_elts = convert_elts(elements = elements)
@@ -750,18 +772,17 @@ class EDSespm(EDSTEMSpectrum) :
         
         _ = 0
         for elt in conv_elts:
-            indices = [i for i, mod_elt in enumerate(self.metadata.EDS_model.elements) if str(elt) == mod_elt[:2]]
+            indices = [[i] for i, mod_elt in enumerate(self.metadata.EDS_model.elements) if str(elt) == mod_elt[:2]]
             if indices:
-                component = sum(G[:,idx][:,np.newaxis] @ W[idx,:][:,np.newaxis] @ H for idx in indices)
+                component = sum([G[:,idx] @ W[idx,:] @ H for idx in indices])
                 spectrum_1D._plot.signal_plot.ax.plot(self.axes_manager.signal_axes[0].axis, component, label=f'{conv_elts_dict[elt]}', linestyle=line_styles[_%len(line_styles)], color=colors[_%len(colors)])
                 _+=1
 
         spectrum_1D._plot.signal_plot.ax.legend()
 
-    def concentration_report(self, selected_elts = [], W_input = None, fit_error = True) : 
+    def concentration_report(self, selected_elts = [], W_input = None, fit_error = True) :
         if W_input is None :
-            if not(isinstance(self.learning_results.decomposition_algorithm,NMFEstimator)) :
-                raise ValueError("No espm learning results available, please run a decomposition with an espm algorithm first")
+            assert isinstance(self.learning_results.decomposition_algorithm,NMFEstimator), "No espm learning results available, please run a decomposition with an espm algorithm first"
             
             W = self.learning_results.decomposition_algorithm.W_
             G = self.learning_results.decomposition_algorithm.G_
@@ -810,8 +831,6 @@ class EDSespm(EDSTEMSpectrum) :
                 errors = np.zeros_like(W)
 
             return conv_elts, W, errors
-        
-        # norm = self.metadata.EDS_model.norm
 
     def estimate_best_binning(self, inspect = False) :
         r"""
@@ -866,8 +885,6 @@ class EDSespm(EDSTEMSpectrum) :
             return mprimes_est, estimated_binning  
         else :
             return estimated_binning
-
-
 
     def define_ROI(self, xray_lines : bool = True) -> RectangularROI :
         r"""
@@ -967,23 +984,8 @@ class EDSespm(EDSTEMSpectrum) :
             
         return H.reshape((len(areas_dict), self.data.shape[0] * self.data.shape[1]))
 
-    def fix_masked_H(self):
-        n = self.learning_results.decomposition_algorithm.n_components
-        x = self.axes_manager.navigation_size
-        mask = self.learning_results.navigation_mask
-        H = np.zeros((n,x))
-        H[:,mask]=np.nan
-        H[:,~mask]=self.learning_results.decomposition_algorithm.H_
-        return H
-
-    def get_full_el_list(self):
-        els = self.metadata.EDS_model.elements.copy()
-        els_names = [num_to_symbol(el) for el in els]
-        return els_names
-
-
-    def quantify(self,skip_elements=[],use_nav_mask=False):
-        
+    @_check_decomposition
+    def elemental_mapping(self,*,skipped_elements : list =[]) -> None:
         r"""
         Performs pixel-wise elemental quantification using the results of an espm decomposition.
         Results are stored in self.quantification_signal and self.quantification_list.
@@ -991,58 +993,59 @@ class EDSespm(EDSTEMSpectrum) :
 
         Parameters
         ----------
-        skip_elements : list
-            List of elements that will not be quantified, therefore renormaliying the remaing.
-
-        use_nav_mask : bool
-            Whether to use or not self.learning_results.navigation_mask to ignore pixels.
-        
+        elements : list
+            List of elements that will not be quantified, therefore renormalizing the remaining ones.
         Returns
         -------
         None
         """
         
         est = self.learning_results.decomposition_algorithm
-        W = est.W_
+
+        _W = est.W_
         H = est.H_
-        G = est.G_
 
+        @number_to_symbol_list
+        def sym_elts(elements = []) :
+            return elements
         
-        els_names = self.get_full_el_list()
+        @symbol_to_number_list
+        def num_elts(elements = []) :
+            return elements
 
+        _elts = sym_elts(elements = self.model.get_elements(False))
+        _elts_indices = self.model.NMF_simplex()
 
+        skipped_elts = sym_elts(elements = skipped_elements)
+        elts = []
+        elts_indices = []
+        for i,elt in enumerate(_elts) :
+            if elt in skipped_elts :
+                pass
+            else :
+                elts.append(elt)
+                elts_indices.append(_elts_indices[i])
 
-        if (self.learning_results.navigation_mask is not None) and use_nav_mask==True:
-            H = self.fix_masked_H()
-
-     
-
+        W = _W[elts_indices,:]
         WH = (W@H)
-        WH = WH.reshape([G.shape[-1]]+list(self.data.shape[:-1]))[:-2]
-
-        if not skip_elements is None:
-            WH = WH[ [i for i,el in enumerate(els_names) if not el in skip_elements]]
-            els_names = [i for i in els_names if not i in skip_elements]
+        WH = WH.reshape([W.shape[0]]+list(self.data.shape[:-1]))
             
-
         WH/=WH.sum(0)[np.newaxis,...]/100
 
-
-        if self.axes_manager.navigation_dimension == 2:        
+        if self.axes_manager.navigation_dimension == 2:
             Signal = hs.signals.Signal2D
         elif self.axes_manager.navigation_dimension ==1:
             Signal = hs.signals.Signal1D
 
         qs = [Signal(WH[i],
                     metadata = {"General":{"name":el,
-                    "title":el+" Quantification"}},colorbar_label="A") for i,el in enumerate(els_names)]
+                    "title":el+" Quantification"}},colorbar_label="A") for i,el in enumerate(elts)]
         
         for q in qs:
             for i in range(self.axes_manager.navigation_dimension):
                 q.axes_manager[i].update_from(self.axes_manager[i],["units","scale","name","offset"])
             q.metadata.Signal.quantity = "Atomic %"
             wh = Signal(WH)
-
 
         for i in range(self.axes_manager.navigation_dimension):
             wh.axes_manager[1+i].update_from(self.axes_manager[i],["units","scale","name","offset"])
@@ -1051,23 +1054,25 @@ class EDSespm(EDSTEMSpectrum) :
         self.quantification_signal = wh
 
         for k,m in self.metadata: self.quantification_signal.metadata.set_item(k,m)
-        self.quantification_signal.metadata.set_item("Sample.elements", els_names)
+        self.quantification_signal.metadata.set_item("Sample.elements", elts)
         self.quantification_signal.metadata.set_item("Signal.quantity" ,"Atomic %")
         self.quantification_signal.axes_manager[0].name = "Elements"
         if self.quantification_signal.metadata.has_item("Sample.xray_lines"):
-            self.quantification_signal.metadata.set_item("Sample.xray_lines" , [i for i in self.quantification_signal.metadata.Sample.xray_lines if not i.split("_")[0] in skip_elements])
+            self.quantification_signal.metadata.set_item("Sample.xray_lines" , [i for i in self.quantification_signal.metadata.Sample.xray_lines if not i.split("_")[0] in skipped_elts])
         self.quantification_signal_1d = self.quantification_signal.as_signal1D(0)
         #hack to label elements. Horrible, I know.
         def label_elements():
-            self.quantification_signal._plot.navigator_plot.ax.set_xticks(list(range(len(els_names))),els_names)
+            self.quantification_signal._plot.navigator_plot.ax.set_xticks(list(range(len(elts))),elts)
             return
 
         self.quantification_signal.axes_manager[0].events.index_changed.connect(label_elements,[])
 
+        hs.plot.plot_images(qs)
 
         return
 
-    def plot_comp_model(self,comp_index):
+    @_check_decomposition
+    def plot_comp_model(self,comp_index : int) :
         r"""
         Plots espm model of the component #comp_index, showing contributions of each element and background.
 
@@ -1101,7 +1106,7 @@ class EDSespm(EDSTEMSpectrum) :
         
         return plt.gcf()
 
-
+    @_check_decomposition
     def plot_data_model(self):
         r"""
         Plots espm decomposition model as a new signal, showing contributions of each element and background
@@ -1154,7 +1159,7 @@ class EDSespm(EDSTEMSpectrum) :
 
         return
     
-    
+    @_check_decomposition
     def plot_data_model_ROI(self):
         r"""
         Plots ESPM EDXS model fit results on the experimental data, summed over the chosen region of interest.
@@ -1224,49 +1229,8 @@ class EDSespm(EDSTEMSpectrum) :
 
         return
 
-    def create_masking_signal(self,skip_elements=None,use_nav_mask=False,use_comps=None):
-
-        r"""
-        Creates a signal suitable for generating mask via cluster analysis.
-        It is stored in self.mask
-
-        Parameters
-        ----------
-        skip_elements : list
-        Elements to be ignored when gereating the signal
-
-        use_nav_mask : bool
-        Wheter to look for navigation mask in self.learning_results.navigation_mask
-
-        Returns
-        -------
-        None
-        """
-
-
-
-        sm = self.deepcopy()
-        sm.set_signal_type("EDS_TEM")
-        if use_nav_mask:
-            sm.decomposition(navigation_mask=sm.learning_results.navigation_mask)
-        else:
-            sm.decomposition()
-        # relevant elements in your sample
-        if not skip_elements is None:
-            sm.metadata.Sample.elements = [ i for i in sm.metadata.Sample.elements if not i in skip_elements]
-            sm.metadata.Sample.xray_lines = [i for i in sm.metadata.Sample.xray_lines if i.split("_")[0] in sm.metadata.Sample.elements]
-        
-        if use_comps is None: 
-            sm = sm.get_decomposition_model(sm.estimate_elbow_position())
-        else:
-            sm = sm.get_decomposition_model(use_comps)
-
-        l1=[]
-        for i,j in sm.estimate_integration_windows():
-            l1.append(sm.isig[i:j].data)
-        self.mask = hs.signals.Signal1D(np.dstack(l1))
-
-    def quantification_profile(self,**kwargs):
+    @_check_decomposition
+    def elemental_profile(self,**kwargs):
         r"""
         Plots quantification profiles of all elements. 
 
@@ -1346,20 +1310,29 @@ class EDSespm(EDSTEMSpectrum) :
         mean = (x*y).sum()/y.sum()
 
         sigma =  np.sqrt((y * (x - mean)**2).sum() / y.sum())
-        popt,pcov = curve_fit(Gauss, x, y, p0=[max(y),mean ,sigma])
+        popt,_pcov = curve_fit(Gauss, x, y, p0=[max(y),mean ,sigma])
         self._gauss_means[i-1]=popt[1]
         
         fig = plt.gcf()
-        l = fig.axes[0].lines[i] 
+        l = fig.axes[0].lines[i]
         l.set_ydata(Gauss(x,*popt))
         fig.canvas.draw()
+
+    #########
+    # Utils #
+    #########
+
+    def get_full_el_list(self):
+        els = self.metadata.EDS_model.elements.copy()
+        els_names = [num_to_symbol(el) for el in els]
+        return els_names
 
 
 #######################
 # Auxiliary functions #
 #######################
 
-def get_metadata(spim) : 
+def get_metadata(spim) :
     r"""
     Get the metadata of the :class:`EDSespm` object and format it as a model parameters dictionary.
     """
@@ -1380,14 +1353,14 @@ def get_metadata(spim) :
             "toa" : spim.metadata.Acquisition_instrument.TEM.Detector.EDS.take_off_angle,
             "density" : spim.metadata.Sample.density
         }
-        try : 
+        try :
             pars_dict["Det"] = spim.metadata.Acquisition_instrument.TEM.Detector.EDS.type.as_dictionary()
-        except AttributeError : 
+        except AttributeError :
             pars_dict["Det"] = spim.metadata.Acquisition_instrument.TEM.Detector.EDS.type
 
         mod_pars["params_dict"] = pars_dict
 
-    except AttributeError : 
+    except AttributeError :
         print("You need to define the relevant parameters for the analysis. Use the set_analysis_parameters function.")
 
     return mod_pars

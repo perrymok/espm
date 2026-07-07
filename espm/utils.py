@@ -116,25 +116,25 @@ def bin_spim(data,n,m):
     return np.reshape(np.array([np.sum(data[k1*bs[0]:(k1+1)*bs[0],k2*bs[1]:(k2+1)*bs[1]],axis=(0,1)) for k1 in range(n) for k2 in range(m)]),(n,m,k))
 
 
-def number_to_symbol_dict (func) : 
+def number_to_symbol_dict (func) :
     r"""
     Decorator
     Takes a dict of elements (a.k.a chemical composition) with atomic numbers as keys (e.g. 26 for Fe)
     returns a dict of elements with symbols as keys (e.g. Fe for iron)
     """
     @wraps(func)
-    def inner(*args,**kwargs) : 
+    def inner(*args,**kwargs) :
         elts_dict = kwargs["elements_dict"]
         new_dict = {}
-        with open(NUMBER_PERIODIC_TABLE,"r") as f : 
+        with open(NUMBER_PERIODIC_TABLE,"r") as f :
             NPT = json.load(f)["table"]
         
-        for key in elts_dict.keys() : 
+        for key in elts_dict.keys() :
             
-            if is_symbol(key) : 
+            if is_symbol(key) :
                 new_dict[key] = elts_dict[key]
             
-            elif is_number(key) : 
+            elif is_number(key) :
                 new_dict[NPT[str(key)]["symbol"]] = elts_dict[key]
             
             else : 
@@ -145,7 +145,7 @@ def number_to_symbol_dict (func) :
 
     return inner
 
-def symbol_to_number_dict (func) : 
+def symbol_to_number_dict (func) :
     r"""
     Decorator
     Takes a dict of elements (a.k.a chemical composition) with symbols as keys (e.g. Fe for iron)
