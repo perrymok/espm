@@ -570,6 +570,10 @@ class EDSespm(EDSTEMSpectrum) :
     def _register_ranges(self,signal, left, right) : 
         # The unused args are required for the event to properly complete
         coord_list = [[span.ss_left_value, span.ss_right_value] for span in self.spans]
+        for coords in coord_list : 
+            if np.nan in coords : 
+                # TODO : needs to be improved in future versions.
+                raise ValueError("You have to click and drag each area at least so that the calculated bremsstrahlung is displayed.")
         coord_list.sort(key = lambda coord : coord[0])
         tree = intervaltree.IntervalTree.from_tuples(coord_list)
         self.ranges = []
@@ -1259,7 +1263,13 @@ class EDSespm(EDSTEMSpectrum) :
         ax.set_ylabel("Atomic %")
         return p_contrib
 
-    def calibrate_from_lines(self):
+    def calibrate_from_lines(self) -> None:
+        r"""
+        Selects two Xray lines from a 1D EDXS spectrum for further calibration by the apply_interactive_calibration method.
+        """
+        print("Instructions : ")
+        print("1. Select two X-ray lines (ideally far apart). The energies of the fitted peaks appears nearby.")
+        print("2. Note down those values and use : apply_interactive_calibration(e1,e2), where e1 and e2 are the energy values in keV.")
         self._gauss_means=np.zeros(2)
         a = self.sum((0,1))
         b = a.deepcopy()
@@ -1277,9 +1287,13 @@ class EDSespm(EDSTEMSpectrum) :
 
         hs.interactive(self.fit_plot_gauss,event = roi1.events.changed,roi_signal = roi_signal1,a=a,roi = roi1,i=1)
         hs.interactive(self.fit_plot_gauss,event = roi2.events.changed,roi_signal = roi_signal2,a=a,roi = roi2,i=2)
-        print("When ready, run self.apply_interactive_calibration(enery_left_peak,energy_right_peak)")
+        # print("When ready, run self.apply_interactive_calibration(enery_left_peak,energy_right_peak)")
 
-    def apply_interactive_calibration(self,energy_left_peak,energy_right_peak):
+    def apply_interactive_calibration(self,energy_left_peak : float,energy_right_peak : float) -> None :
+        r"""
+        Applies the calibration on two peaks previously selected using calibrate_from_lines.
+        It modifies the axes of the object.
+        """
         #Dumbass hyperspy keeps events linked and has no "remove events" method
         self.axes_manager.events.any_axis_changed.trigger = hyperspy.events.Event().trigger
         self.axes_manager.events.any_axis_changed._connected_some={}
@@ -1312,10 +1326,37 @@ class EDSespm(EDSTEMSpectrum) :
         sigma =  np.sqrt((y * (x - mean)**2).sum() / y.sum())
         popt,_pcov = curve_fit(Gauss, x, y, p0=[max(y),mean ,sigma])
         self._gauss_means[i-1]=popt[1]
+        fit_mean = popt[1]
         
         fig = plt.gcf()
+        ax = fig.axes[0]
         l = fig.axes[0].lines[i]
         l.set_ydata(Gauss(x,*popt))
+
+        # --- Interactive Text Handling ---
+        text_label = f"Peak energy: {fit_mean:.2f} keV"
+        
+        # Look for an existing text object belonging to this specific index/plot
+        text_obj = None
+        for txt in ax.texts:
+            if txt.get_gid() == f"gauss_text_{i}":
+                text_obj = txt
+                break
+        
+        if text_obj:
+            # Update the existing text and reposition it dynamically if needed
+            text_obj.set_text(text_label)
+            text_obj.set_position((fit_mean, max(y) * 0.9)) 
+        else:
+            # Create a new text object and give it a unique Group ID (gid)
+            # transform=ax.transData places it relative to your data coordinates
+            ax.text(
+                fit_mean, max(y) * 0.9, text_label, 
+                color=l.get_color(), fontweight='bold',
+                bbox=dict(facecolor='white', alpha=0.6, edgecolor='none'),
+                gid=f"gauss_text_{i}"
+            )
+
         fig.canvas.draw()
 
     #########
@@ -1326,7 +1367,6 @@ class EDSespm(EDSTEMSpectrum) :
         els = self.metadata.EDS_model.elements.copy()
         els_names = [num_to_symbol(el) for el in els]
         return els_names
-
 
 #######################
 # Auxiliary functions #

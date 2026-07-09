@@ -488,7 +488,7 @@ def quant_spectrum(s1, skip_elements = []):
 def cluster_analysis_concentration_report(s,cluster_source = None,print_std=False):
     r"""
     Performs quantification in atomic % each cluster.
-    s must have been quantified using .quantify() method. 
+    s must have been quantified using .elemental_mapping() method. 
     
     Parameters
     ----------
