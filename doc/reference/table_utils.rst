@@ -1,5 +1,5 @@
-===========
-Table utils
-===========
+====================
+Cross sections utils
+====================
 
-.. automodule:: espm.tables_utils
+.. automodule:: espm.cross_sections_utils

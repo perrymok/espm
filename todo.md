@@ -1,3 +1,5 @@
+# Previous to 1.1.4
+
 # TODOs
 
 * Check that the doc is somehow understandable and sufficiently complete
@@ -9,5 +11,13 @@
 * Better model detector response : add asymmetric gaussian peaks + shelf.
 * Change the linear change in detector fwhm to the physical one.
 
+# 1.1.4. 
 
+* `cross_section_utils.py` :
+    * tests need to be made.
+    * We should work on a common framework for modifying xray lines with different methods.
 
+* `eds_spim.py` : 
+    * Re-work the mask selection tools without using mpl-interactions, if possible
+    * For the future, it would be nice to simplify the fixed_H / fixed_W usage
+    * tests on fixed H

@@ -4,7 +4,7 @@ import numpy as np
 import espm.models.EDXS_function as ef
 from espm.models import EDXS
 from espm.models.EDXS_function import lifshin_bremsstrahlung, lifshin_bremsstrahlung_b0, lifshin_bremsstrahlung_b1
-import hyperspy.api as hs
+import hyperspy as hs
 
 x = np.linspace(0.2,19,num = 2000)
 det_dict = {

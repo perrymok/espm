@@ -9,28 +9,46 @@ The main purpose of this class is to provide an easy and clean interface between
     - estimate best binning thanks to the method developed by G. Obozinski, N. Perraudin and M. Martinez Ruts.
     - set fixed W for the :class:`espm.estimators.NMFEstimator` decomposition
 """
-
-from exspy.signals import EDSTEMSpectrum
-from espm.models import EDXS
-from exspy.utils.eds import take_off_angle
-from espm.utils import number_to_symbol_list, get_explained_intensity_W, symbol_to_number_list
-import numpy as np
-from espm.estimators import NMFEstimator
-import re
+import json
 import warnings
+
+import numpy as np
+from scipy.optimize import curve_fit
 from prettytable import PrettyTable
 from tqdm import tqdm
-from espm.estimators import SmoothNMF
-from espm.conf import NUMBER_PERIODIC_TABLE
-import json
+import intervaltree
+# from functools import wraps
+
+from exspy.signals import EDSTEMSpectrum
+from exspy.utils.eds import take_off_angle
 from hyperspy.signal_tools import Signal1DRangeSelector
 from hyperspy.ui_registry import get_gui
-import intervaltree
+
+from hyperspy.roi import RectangularROI, BaseROI
+import hyperspy.api as hs
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+import hyperspy.events
+
+from espm.utils import num_to_symbol
+from espm.models import EDXS
+from espm.estimators import SmoothNMF, NMFEstimator
+from espm.conf import NUMBER_PERIODIC_TABLE
+from espm.utils import number_to_symbol_list, get_explained_intensity_W, symbol_to_number_list
 
 NPT = json.load(open(NUMBER_PERIODIC_TABLE))
 
-class EDSespm(EDSTEMSpectrum) : 
+def _check_decomposition(func) -> bool :
+    # @wraps(func)
+    def inner(instance,*args,**kwargs) :
+        est = instance.learning_results.decomposition_algorithm
+        assert not(est is None), f"No decomposition was performed. Please, use the espm decomposition before running {func}"
+        assert issubclass(type(est),NMFEstimator), f"To use {func} you need to use an object that inherits NMFEstimator, e.g. SmoothNMF."
+        return func(instance,*args,**kwargs)
 
+    return inner
+
+class EDSespm(EDSTEMSpectrum) : 
     _signal_type = "EDS_espm"
 
     def __init__ (self,*args,**kwargs) : 
@@ -47,7 +65,7 @@ class EDSespm(EDSTEMSpectrum) :
     # Properties #
     ##############
 
-    def _set_default_analysis_params(self) :
+    def _set_default_analysis_params(self) -> None :
         # TODO : make them fetch preferences from the user 
         md = self.metadata
         md.Signal.signal_type = "EDS_espm"
@@ -63,7 +81,7 @@ class EDSespm(EDSTEMSpectrum) :
         if "Acquisition_instrument.TEM.Stage.tilt_beta" not in md :
             md.set_item("Acquisition_instrument.TEM.Stage.tilt_beta", 0.0)
 
-    def _check_metadata_G(self) : 
+    def _check_metadata_G(self) -> None : 
         md = self.metadata
 
         if "Sample.elements" not in md :
@@ -85,7 +103,7 @@ class EDSespm(EDSTEMSpectrum) :
         if "xray_db" not in md :
             raise ValueError("The xray database is missing in the metadata. Please use the set_analysis_parameters method to set the xray database.")
         
-    def _check_metadata_quantification(self) : 
+    def _check_metadata_quantification(self) -> None : 
         md = self.metadata
 
         if "Acquisition_instrument.TEM.Detector.EDS.geometric_efficiency" not in md :
@@ -96,7 +114,7 @@ class EDSespm(EDSTEMSpectrum) :
             raise ValueError("The acquisition time is missing in the metadata. Please use the set_microscope_parameters method to set the acquisition time.")
         
     @property
-    def custom_init (self) :
+    def custom_init (self) -> bool :
         r"""
         Boolean setting whether using the custom_init (see espm.models.EDXS) or not.
         If True, the custom_init will be used to initialise the decomposition.
@@ -106,11 +124,11 @@ class EDSespm(EDSTEMSpectrum) :
         return self.custom_init_
     
     @custom_init.setter
-    def custom_init (self, value) :
+    def custom_init (self, value : bool) -> None :
         self.custom_init_ = value
 
     @property
-    def shape_2d (self) : 
+    def shape_2d (self) -> tuple[int] : 
         r"""
         Shape of the data in the spatial dimension.
         """
@@ -119,7 +137,7 @@ class EDSespm(EDSTEMSpectrum) :
         return self.shape_2d_
 
     @property
-    def X (self) :
+    def X (self) -> np.ndarray :
         r"""
         The data in the form of a 2D array of shape (n_samples, n_features).
         """
@@ -127,19 +145,9 @@ class EDSespm(EDSTEMSpectrum) :
             shape = self.axes_manager[1].size, self.axes_manager[0].size, self.axes_manager[2].size
             self._X = self.data.reshape((shape[0]*shape[1], shape[2])).T
         return self._X
-    
+
     @property
-    def model(self) :
-        r"""
-        The :class:`espm.models.EDXS` model corresponding to the metadata of the :class:`EDSespm` object.
-        """ 
-        if self.model_ is None : 
-            mod_pars = get_metadata(self)
-            self.model_ = EDXS(**mod_pars, custom_init=self.custom_init_)
-        return self.model_
-    
-    @property
-    def G(self) :
+    def G(self)  -> np.ndarray  :
         r"""
         The G matrix of the :class:`espm.models.EDXS` model corresponding to the metadata of the :class:`EDSespm` object.
         """
@@ -152,7 +160,17 @@ class EDSespm(EDSTEMSpectrum) :
                 return None
         return self.G_
 
-    def build_G(self, problem_type = "bremsstrahlung",ignored_elements = ['Cu'],*, elements_dict = {}) :
+    @property
+    def model (self) -> EDXS :
+        r"""
+        The :class:`espm.models.EDXS` model corresponding to the metadata of the :class:`EDSespm` object.
+        """ 
+        if self.model_ is None : 
+            mod_pars = get_metadata(self)
+            self.model_ = EDXS(**mod_pars, custom_init=self.custom_init_)
+        return self.model_
+
+    def build_G(self, problem_type : str = "bremsstrahlung",ignored_elements : list[str] = ['Cu'],*, elements_dict : dict[str,float] = {}) -> None :
         r"""
         Build the G matrix of the :class:`espm.models.EDXS` model corresponding to the metadata of the :class:`EDSespm` object and stores it as an attribute.
 
@@ -186,11 +204,213 @@ class EDSespm(EDSTEMSpectrum) :
         self.metadata.EDS_model.elements = self.model.model_elts
         self.metadata.EDS_model.norm = self.model.norm
 
+    def set_analysis_parameters(
+        self,
+        thickness : float = None,
+        density : float = None,
+        detector_type : str | dict = None,
+        width_slope : float = None,
+        width_intercept : float = None,
+        geom_eff : float = None,
+        xray_db : str = None
+    ) -> None :
+        r"""
+        Set the relevant parameters for the analysis in the metadata of the :class:`EDSespm` object.
+
+        Parameters
+        ----------
+        thickness : float
+            Thickness of the sample in cm.
+        density : float
+            Density of the sample in g/cm^3.
+        detector_type : str
+            Type of the detector. The default is "SDD_efficiency.txt".
+        width_slope : float
+            Slope of the width of the peaks in the EDS spectrum.
+        width_intercept : float
+            Intercept of the width of the peaks in the EDS spectrum.
+        geom_eff : float
+            Geometric efficiency of the detector.
+        acq_time : float
+            Acquisition time of the spectrum in seconds.
+        probe_current : float
+            Probe current in A.
+        xray_db : str
+            Path to the xray database file. The default is "200keV_xrays.json".
+        """
+        md = self.metadata
+
+        if thickness is not None:
+            md.set_item("Sample.thickness", thickness)
+        if density is not None:
+            md.set_item("Sample.density", density)
+        if detector_type is not None:
+            md.set_item("Acquisition_instrument.TEM.Detector.EDS.type", detector_type)
+        if width_slope is not None:
+            md.set_item("Acquisition_instrument.TEM.Detector.EDS.width_slope", width_slope)
+        if width_intercept is not None:
+            md.set_item("Acquisition_instrument.TEM.Detector.EDS.width_intercept", width_intercept)
+        if geom_eff is not None:
+            md.set_item("Acquisition_instrument.TEM.Detector.EDS.geometric_efficiency", geom_eff)
+        if xray_db is not None:
+            md.set_item("xray_db", xray_db)
+
+        try : 
+            md.set_item("Acquisition_instrument.TEM.Detector.EDS.take_off_angle",
+                        take_off_angle(tilt_stage = md.Acquisition_instrument.TEM.Stage.tilt_alpha,
+                                       azimuth_angle = md.Acquisition_instrument.TEM.Detector.EDS.azimuth_angle,
+                                       elevation_angle = md.Acquisition_instrument.TEM.Detector.EDS.elevation_angle,
+                                       beta_tilt = md.Acquisition_instrument.TEM.Stage.tilt_beta))
+        except AttributeError :
+            print("You need to define the azimuth and elevation of the detector as well as the alpha and beta tilt of the sample holder. Please, use the set_microscope_parameters function.")
+
+
+    ############################
+    # Helper functions for NMF #
+    ############################
+
+    def carto_fixed_W(self, brstlg_comps : int = 1) -> np.ndarray : 
+        r"""
+        Helper function to create a fixed_W matrix for chemical mapping. It will output a matrix 
+        It can be used to make a decomposition with as many components as they are  chemical elements and then allow each component to have only one of each element.
+        The spectral components are then the characteristic peaks of each element and the spatial components are the associated chemical maps.
+        The bremsstrahlung is calculated separately and added to other components.
+
+        Parameters
+        ----------
+        brstlg_comps : int, optional
+            Number of bremsstrahlung components to add to the decomposition.
+
+        Returns
+        -------
+        W : numpy.ndarray
+        """
+        if self.G_ is None :
+            raise ValueError("The G matrix has not been built yet. Please use the build_G method.")
+        elements = self.metadata.EDS_model.elements
+        if self.problem_type == "no_brstlg" : 
+            W = np.diag(-1* np.ones((len(elements), )))
+        elif self.problem_type == "bremsstrahlung" : 
+            W1 = np.diag(-1* np.ones((len(elements), )))
+            W2 = np.zeros((2, len(elements)))
+            W_elts = np.vstack((W1,W2))
+            W3 = np.zeros((len(elements),brstlg_comps))
+            W4 = -1*np.ones((2,brstlg_comps))
+            W_brstlg = np.vstack((W3,W4))
+            W = np.hstack((W_elts,W_brstlg))
+
+        return W
+
+    def set_fixed_W (self,phases_dict : dict[str,float]) -> np.ndarray : 
+        r"""
+        Helper function to create a fixed_W matrix. The output matrix will have -1 entries except for the elements (and bremsstrahlung parameters) that are present in the phases_dict dictionary.
+        In the output (fixed_W) matrix, the -1 entries will be ignored during the decomposition using :class:`espm.estimator.NMFEstimator` are normally learned while the non-negative entries will be fixed to the values given in the phases_dict dictionary.
+        Usually, the easiest is to fix some elements to 0.0 in some phases if you want to improve unmixing results. For example, if you have a phase with only Si and O, you can fix the Fe element to 0.0 in this phase.
+
+        Parameters
+        ----------
+        phases_dict : dict
+            Determines which elements of fixed_W are going to be non-negative. The dictionnary has typically the following structure : phases_dict = {"phase1_name" : {"Fe" : 0.0, "O" : 1.25e23}, "phase2_name" : {"Si" : 0.0, "b0" : 0.05}}.
+        Returns
+        -------
+        W : numpy.ndarray
+        """
+        if self.G_ is None :
+            raise ValueError("The G matrix has not been built yet. Please use the build_G method.")
+        raw_elts = self.metadata.EDS_model.elements
+        elements = self.model.get_elements()
+        indices = self.model.NMF_simplex()
+
+        # convert elements to symbols but also omitting splitted lines
+        @number_to_symbol_list
+        def convert_to_symbols(elements = []) : 
+            return elements
+        
+        conv_elts = convert_to_symbols(elements=elements)
+
+        if self.problem_type == "no_brstlg" : 
+            W = -1* np.ones((len(raw_elts), len(phases_dict.keys())))
+        elif self.problem_type == "bremsstrahlung" : 
+            W = -1* np.ones((len(raw_elts)+2, len(phases_dict.keys())))
+        else : 
+            raise ValueError("problem type should be either no_brstlg or bremsstrahlung")
+        for p, phase in enumerate(phases_dict) : 
+            for key in phases_dict[phase] : 
+                if key == "b0" : 
+                    if self.problem_type == "bremsstrahlung" : 
+                        W[-2,p] = phases_dict[phase][key]
+                    else : 
+                        warnings.warn("The chosen EDXS modelling does not incorporate the bremsstrahlung. Input bremsstrahlung parameters will be ignored.")
+                if key == "b1" :
+                    if self.problem_type == "bremsstrahlung" :
+                        W[-1,p] = phases_dict[phase][key]
+                    else :
+                        warnings.warn("The chosen EDXS modelling does not incorporate the bremsstrahlung. Input bremsstrahlung parameters will be ignored.")
+                if key in conv_elts : 
+                    W[indices[conv_elts.index(key)],p] = phases_dict[phase][key]
+        return W
+    
+    def print_concentration_report (self,
+                                    selected_elts : list[str] = [],
+                                    W_input : np.ndarray = None,
+                                    fit_error : bool = True,
+                                    disclaimer : bool = True) -> None : 
+        r"""
+        Print a report of the chemical concentrations from a fitted W.
+
+        Parameters
+        ----------
+        selected_elts : list, optional
+            List of the elements to be printed. If empty, all the elements will be printed.
+
+        W_input : numpy.ndarray, optional
+            If not None, the concentrations will be computed from this W matrix instead of the one fitted during the decomposition.
+
+        fit_error : bool, optional
+            If True, the statistical errors on the concentrations will be printed.
+
+        disclaimer : bool, optional
+            If True, a disclaimer will be printed at the end of the report.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        - This function is only available if the learning results contain a decomposition algorithm that has been fitted.
+        """
+        conv_elts, W, errors = self.concentration_report(selected_elts = selected_elts, W_input = W_input, fit_error = fit_error)
+        
+        table = PrettyTable()
+        field_list = ["Elements"]
+        for i in range(W.shape[1]) :
+            field_list.append("p" + str(i) + " (at.%)")
+            if fit_error : 
+                field_list.append("p" + str(i) + " std (%)")
+        table.field_names = field_list
+        for i,j in enumerate(conv_elts) :
+            row = [j]
+            for k in range(W.shape[1]) :
+                row.append(W[i,k])
+                if fit_error : 
+                    row.append(errors[i,k])
+            table.add_row(row)
+
+        table.float_format="0.3"
+        table.align = "r"
+        table.align["Elements"] = "l"
+        # table.set_style(MSWORD_FRIENDLY)
+
+        print(table)
+        if disclaimer and fit_error: 
+            print("\nDisclaimer : The presented errors correspond to the statistical error on the fitted intensity of the peaks according to a Poisson law.\nIn other words it corresponds to the precision of the measurment.\nThe accuracy of the measurment strongly depends on other factors such as absorption, cross-sections, etc...\nPlease consider these parameters when interpreting the results.")
+
     ############################
     # Bremsstrahlung functions #
     ############################
 
-    def estimate_mass_thickness(self, ignored_elements = ['Cu'], tol = 1e-8,*, elements_dict = {}) :
+    def estimate_mass_thickness(self, ignored_elements : list[str] = ['Cu'], tol : float = 1e-8,*, elements_dict : dict = {}) -> None :
         r"""
         Based on the complete metadata of the :class:`EDSespm` object, this function estimates the mass thickness of the sample. This function derives the mass-thickness from the characteristic X-rays. Then the bremsstrahlung parameters are estimated using that mass-thickness. The process is then repeated ten times to ensure convergence. The results are plotted on the spectrum.
 
@@ -350,6 +570,10 @@ class EDSespm(EDSTEMSpectrum) :
     def _register_ranges(self,signal, left, right) : 
         # The unused args are required for the event to properly complete
         coord_list = [[span.ss_left_value, span.ss_right_value] for span in self.spans]
+        for coords in coord_list : 
+            if np.nan in coords : 
+                # TODO : needs to be improved in future versions.
+                raise ValueError("You have to click and drag each area at least so that the calculated bremsstrahlung is displayed.")
         coord_list.sort(key = lambda coord : coord[0])
         tree = intervaltree.IntervalTree.from_tuples(coord_list)
         self.ranges = []
@@ -396,91 +620,6 @@ class EDSespm(EDSTEMSpectrum) :
         ranges_list = [(values[2*i-1],values[2*i]) for i in range(1,num+1)]
         return ranges_list
 
-    ############################
-    # Helper functions for NMF #
-    ############################
-
-    def carto_fixed_W(self, brstlg_comps = 1) : 
-        r"""
-        Helper function to create a fixed_W matrix for chemical mapping. It will output a matrix 
-        It can be used to make a decomposition with as many components as they are  chemical elements and then allow each component to have only one of each element.
-        The spectral components are then the characteristic peaks of each element and the spatial components are the associated chemical maps.
-        The bremsstrahlung is calculated separately and added to other components.
-
-        Parameters
-        ----------
-        brstlg_comps : int, optional
-            Number of bremsstrahlung components to add to the decomposition.
-
-        Returns
-        -------
-        W : numpy.ndarray
-        """
-        if self.G_ is None :
-            raise ValueError("The G matrix has not been built yet. Please use the build_G method.")
-        elements = self.metadata.EDS_model.elements
-        if self.problem_type == "no_brstlg" : 
-            W = np.diag(-1* np.ones((len(elements), )))
-        elif self.problem_type == "bremsstrahlung" : 
-            W1 = np.diag(-1* np.ones((len(elements), )))
-            W2 = np.zeros((2, len(elements)))
-            W_elts = np.vstack((W1,W2))
-            W3 = np.zeros((len(elements),brstlg_comps))
-            W4 = -1*np.ones((2,brstlg_comps))
-            W_brstlg = np.vstack((W3,W4))
-            W = np.hstack((W_elts,W_brstlg))
-
-        return W
-
-    def set_fixed_W (self,phases_dict) : 
-        r"""
-        Helper function to create a fixed_W matrix. The output matrix will have -1 entries except for the elements (and bremsstrahlung parameters) that are present in the phases_dict dictionary.
-        In the output (fixed_W) matrix, the -1 entries will be ignored during the decomposition using :class:`espm.estimator.NMFEstimator` are normally learned while the non-negative entries will be fixed to the values given in the phases_dict dictionary.
-        Usually, the easiest is to fix some elements to 0.0 in some phases if you want to improve unmixing results. For example, if you have a phase with only Si and O, you can fix the Fe element to 0.0 in this phase.
-
-        Parameters
-        ----------
-        phases_dict : dict
-            Determines which elements of fixed_W are going to be non-negative. The dictionnary has typically the following structure : phases_dict = {"phase1_name" : {"Fe" : 0.0, "O" : 1.25e23}, "phase2_name" : {"Si" : 0.0, "b0" : 0.05}}.
-        Returns
-        -------
-        W : numpy.ndarray
-        """
-        if self.G_ is None :
-            raise ValueError("The G matrix has not been built yet. Please use the build_G method.")
-        raw_elts = self.metadata.EDS_model.elements
-        elements = self.model.get_elements()
-        indices = self.model.NMF_simplex()
-
-        # convert elements to symbols but also omitting splitted lines
-        @number_to_symbol_list
-        def convert_to_symbols(elements = []) : 
-            return elements
-        
-        conv_elts = convert_to_symbols(elements=elements)
-
-        if self.problem_type == "no_brstlg" : 
-            W = -1* np.ones((len(raw_elts), len(phases_dict.keys())))
-        elif self.problem_type == "bremsstrahlung" : 
-            W = -1* np.ones((len(raw_elts)+2, len(phases_dict.keys())))
-        else : 
-            raise ValueError("problem type should be either no_brstlg or bremsstrahlung")
-        for p, phase in enumerate(phases_dict) : 
-            for key in phases_dict[phase] : 
-                if key == "b0" : 
-                    if self.problem_type == "bremsstrahlung" : 
-                        W[-2,p] = phases_dict[phase][key]
-                    else : 
-                        warnings.warn("The chosen EDXS modelling does not incorporate the bremsstrahlung. Input bremsstrahlung parameters will be ignored.")
-                if key == "b1" :
-                    if self.problem_type == "bremsstrahlung" :
-                        W[-1,p] = phases_dict[phase][key]
-                    else :
-                        warnings.warn("The chosen EDXS modelling does not incorporate the bremsstrahlung. Input bremsstrahlung parameters will be ignored.")
-                if key in conv_elts : 
-                    W[indices[conv_elts.index(key)],p] = phases_dict[phase][key]
-        return W
-    
     def decomposition(
         self,
         normalize_poissonian_noise=False,
@@ -603,10 +742,21 @@ class EDSespm(EDSTEMSpectrum) :
         )
         self.model_ = model_
 
-    def plot_1D_results(self, elements = []) :
-        if not(isinstance(self.learning_results.decomposition_algorithm,NMFEstimator)) :
-            raise ValueError("No espm learning results available, please run a decomposition with an espm algorithm first")
-        
+    @_check_decomposition
+    def plot_1D_results(self, xray_lines : bool = True,elements : list[str] = []) -> None :
+        r"""
+        Plots each spectrum (component) resulting from an espm decompositions.
+        It shows the contribution of each selected element and the total model.
+
+        Parameters
+        ----------
+        elements : list[str]
+            list of elements to display
+
+        Results
+        -------
+        None
+        """
         W = self.learning_results.decomposition_algorithm.W_
         G = self.learning_results.decomposition_algorithm.G_
         H = self.learning_results.decomposition_algorithm.H_.mean(axis = 1)
@@ -616,7 +766,7 @@ class EDSespm(EDSTEMSpectrum) :
             return elements
         
         spectrum_1D = self.mean()
-        spectrum_1D.plot(True)
+        spectrum_1D.plot(xray_lines = xray_lines)
         spectrum_1D._plot.signal_plot.ax.plot(spectrum_1D.axes_manager.signal_axes[0].axis, G@W@H, 'b-', label = 'Full model')
         
         conv_elts = convert_elts(elements = elements)
@@ -626,18 +776,17 @@ class EDSespm(EDSTEMSpectrum) :
         
         _ = 0
         for elt in conv_elts:
-            indices = [i for i, mod_elt in enumerate(self.metadata.EDS_model.elements) if str(elt) == mod_elt[:2]]
+            indices = [[i] for i, mod_elt in enumerate(self.metadata.EDS_model.elements) if str(elt) == mod_elt[:2]]
             if indices:
-                component = sum(G[:,idx][:,np.newaxis] @ W[idx,:][:,np.newaxis] @ H for idx in indices)
+                component = sum([G[:,idx] @ W[idx,:] @ H for idx in indices])
                 spectrum_1D._plot.signal_plot.ax.plot(self.axes_manager.signal_axes[0].axis, component, label=f'{conv_elts_dict[elt]}', linestyle=line_styles[_%len(line_styles)], color=colors[_%len(colors)])
                 _+=1
 
         spectrum_1D._plot.signal_plot.ax.legend()
 
-    def concentration_report(self, selected_elts = [], W_input = None, fit_error = True) : 
+    def concentration_report(self, selected_elts = [], W_input = None, fit_error = True) :
         if W_input is None :
-            if not(isinstance(self.learning_results.decomposition_algorithm,NMFEstimator)) :
-                raise ValueError("No espm learning results available, please run a decomposition with an espm algorithm first")
+            assert isinstance(self.learning_results.decomposition_algorithm,NMFEstimator), "No espm learning results available, please run a decomposition with an espm algorithm first"
             
             W = self.learning_results.decomposition_algorithm.W_
             G = self.learning_results.decomposition_algorithm.G_
@@ -686,62 +835,6 @@ class EDSespm(EDSTEMSpectrum) :
                 errors = np.zeros_like(W)
 
             return conv_elts, W, errors
-        
-        # norm = self.metadata.EDS_model.norm
-
-        
-    
-    def print_concentration_report (self, selected_elts = [], W_input = None, fit_error = True, disclaimer = True) : 
-        r"""
-        Print a report of the chemical concentrations from a fitted W.
-
-        Parameters
-        ----------
-        selected_elts : list, optional
-            List of the elements to be printed. If empty, all the elements will be printed.
-
-        W_input : numpy.ndarray, optional
-            If not None, the concentrations will be computed from this W matrix instead of the one fitted during the decomposition.
-
-        fit_error : bool, optional
-            If True, the statistical errors on the concentrations will be printed.
-
-        disclaimer : bool, optional
-            If True, a disclaimer will be printed at the end of the report.
-
-        Returns
-        -------
-        None
-
-        Notes
-        -----
-        - This function is only available if the learning results contain a decomposition algorithm that has been fitted.
-        """
-        conv_elts, W, errors = self.concentration_report(selected_elts = selected_elts, W_input = W_input, fit_error = fit_error)
-        
-        table = PrettyTable()
-        field_list = ["Elements"]
-        for i in range(W.shape[1]) :
-            field_list.append("p" + str(i) + " (at.%)")
-            if fit_error : 
-                field_list.append("p" + str(i) + " std (%)")
-        table.field_names = field_list
-        for i,j in enumerate(conv_elts) :
-            row = [j]
-            for k in range(W.shape[1]) :
-                row.append(W[i,k])
-                if fit_error : 
-                    row.append(errors[i,k])
-            table.add_row(row)
-
-        table.float_format="0.3"
-        table.align = "r"
-        table.align["Elements"] = "l"
-        # table.set_style(MSWORD_FRIENDLY)
-
-        print(table)
-        if disclaimer and fit_error: 
-            print("\nDisclaimer : The presented errors correspond to the statistical error on the fitted intensity of the peaks according to a Poisson law.\nIn other words it corresponds to the precision of the measurment.\nThe accuracy of the measurment strongly depends on other factors such as absorption, cross-sections, etc...\nPlease consider these parameters when interpreting the results.")
 
     def estimate_best_binning(self, inspect = False) :
         r"""
@@ -796,73 +889,490 @@ class EDSespm(EDSTEMSpectrum) :
             return mprimes_est, estimated_binning  
         else :
             return estimated_binning
-        
-    def set_analysis_parameters(
-        self,
-        thickness=None,
-        density=None,
-        detector_type=None,
-        width_slope=None,
-        width_intercept=None,
-        geom_eff=None,
-        xray_db=None
-    ):
+
+    def define_ROI(self, xray_lines : bool = True) -> RectangularROI :
         r"""
-        Set the relevant parameters for the analysis in the metadata of the :class:`EDSespm` object.
+        A function to define a rectangular ROI on an HyperSpy EDXS signal.
+        
+        Parameters
+        ----------
+        xray_lines : bool
+            If True, it displays the xray lines markers ok exspy. It might slow down the execution though.
+            
+        Returns
+        -------
+        roi : hs.roi.RectangularROI
+            A rectangular ROI defined by the user.
+        """
+        scale_x = self.axes_manager[0].scale
+        scale_y = self.axes_manager[1].scale
+        
+        centre_x = self.data.shape[1] * scale_x / 2
+        centre_y = self.data.shape[0] * scale_y / 2
+        dx = self.data.shape[1] * scale_x / 10
+        dy = self.data.shape[0] * scale_y / 10
+        
+        roi = RectangularROI(left = centre_x - dx, top = centre_y - dy, right = centre_x + dx, bottom = centre_y + dy)
+        self.plot()
+        imr = roi.interactive(self, color = 'r')
+        selected_spectrum = hs.interactive(imr.mean)
+        selected_spectrum.metadata.General.title = "Spectrum of the selected area"
+        selected_spectrum.plot(xray_lines = xray_lines)
+        
+        return roi
+    
+    def generate_part_fixed_H_matrix(self, rois : list[RectangularROI] = None, value : float = 1) -> np.ndarray :
+        r"""
+        A function to generate a component of the fixed H matrix for one phase.
+        
+        Parameters
+        ----------
+        ROIs : list
+            A list of rectangular ROIs given by the user.
+        value : float
+            Value of the non-negative entries in the partial H matrix. Must be between 0 and 1.
+            
+        Returns
+        -------
+        part_f_H : np.ndarray
+            A fixed H matrix for one phase.
+        """
+        part_f_H = (-1) * np.ones(shape = (self.data.shape[0], self.data.shape[1]), dtype = float)
+        
+        if value < 0 :
+            raise ValueError("Value must be above 0.")
+        # if value < 1 :
+        #     print("The value of some of the fixed_H matrix is below 1.0.",
+        #           "In most cases, it means that you want to use simplex_H = True and simplex_W = False in smoothNMF decomposition.")
+
+        if rois is None or rois == [] :
+            return part_f_H
+        
+        # We don't enter that part of the code if there are no ROIs so it should be fine
+        if issubclass(type(rois[0]), BaseROI) :
+            for roi in rois:
+                region_parameters = roi.parameters
+                scale_i = self.axes_manager[0].scale
+                scale_j = self.axes_manager[1].scale
+                j_min = int(region_parameters['left'] // scale_j)
+                i_min = int(region_parameters['top'] // scale_i)
+                j_max = int(region_parameters['right'] // scale_j)
+                i_max = int(region_parameters['bottom'] // scale_i)
+                part_f_H[i_min:i_max, j_min:j_max] = value
+        
+        return part_f_H
+    
+    def set_fixed_H(self, areas_dict : dict[str,np.ndarray]) -> np.ndarray :
+        r"""
+        Helper function to generate a fixed H matrix for the SmoothNMF decomposition algorithm. The output matrix will have -1 entries except for the
+        areas that are specified in the input dictionary. The -1 entries will be ignored during the decomposition and learned normally, while the
+        non-negative entries will be kept fixed.
+        
+        Parameters
+        ----------
+        areas_dict : dict
+            Determines which areas are going to be non-negative. The dictionary has the following structure:
+            areas_dict = {"p0" : part_f_H_0, "p1" : part_f_H_1 ...}
+            where part_f_H_0, part_f_H_1, ... are NumPy arrays with the same dimensions as the input data's spatial dimensions. They are generated using the generate_part_fixed_H_matrix() function.
+            
+        Returns
+        -------
+        H : numpy.ndarray
+            A fixed H matrix for the SmoothNMF decomposition algorithm.
+        """
+        
+        H = (-1) * np.ones(shape = (len(areas_dict), self.data.shape[0], self.data.shape[1]), dtype = float)
+        
+        for i, p in enumerate(areas_dict):
+            H[i, :, :] = areas_dict[p]
+            
+        return H.reshape((len(areas_dict), self.data.shape[0] * self.data.shape[1]))
+
+    @_check_decomposition
+    def elemental_mapping(self,*,skipped_elements : list =[]) -> None:
+        r"""
+        Performs pixel-wise elemental quantification using the results of an espm decomposition.
+        Results are stored in self.quantification_signal and self.quantification_list.
+        Sets self.quantification_list, self.quantification_signal, self.quantification_signal_1d.
 
         Parameters
         ----------
-        thickness : float
-            Thickness of the sample in cm.
-        density : float
-            Density of the sample in g/cm^3.
-        detector_type : str
-            Type of the detector. The default is "SDD_efficiency.txt".
-        width_slope : float
-            Slope of the width of the peaks in the EDS spectrum.
-        width_intercept : float
-            Intercept of the width of the peaks in the EDS spectrum.
-        geom_eff : float
-            Geometric efficiency of the detector.
-        acq_time : float
-            Acquisition time of the spectrum in seconds.
-        probe_current : float
-            Probe current in A.
-        xray_db : str
-            Path to the xray database file. The default is "200keV_xrays.json".
+        elements : list
+            List of elements that will not be quantified, therefore renormalizing the remaining ones.
+        Returns
+        -------
+        None
         """
-        md = self.metadata
+        
+        est = self.learning_results.decomposition_algorithm
 
-        if thickness is not None:
-            md.set_item("Sample.thickness", thickness)
-        if density is not None:
-            md.set_item("Sample.density", density)
-        if detector_type is not None:
-            md.set_item("Acquisition_instrument.TEM.Detector.EDS.type", detector_type)
-        if width_slope is not None:
-            md.set_item("Acquisition_instrument.TEM.Detector.EDS.width_slope", width_slope)
-        if width_intercept is not None:
-            md.set_item("Acquisition_instrument.TEM.Detector.EDS.width_intercept", width_intercept)
-        if geom_eff is not None:
-            md.set_item("Acquisition_instrument.TEM.Detector.EDS.geometric_efficiency", geom_eff)
-        if xray_db is not None:
-            md.set_item("xray_db", xray_db)
+        _W = est.W_
+        H = est.H_
 
-        try : 
-            md.set_item("Acquisition_instrument.TEM.Detector.EDS.take_off_angle",
-                        take_off_angle(tilt_stage = md.Acquisition_instrument.TEM.Stage.tilt_alpha,
-                                       azimuth_angle = md.Acquisition_instrument.TEM.Detector.EDS.azimuth_angle,
-                                       elevation_angle = md.Acquisition_instrument.TEM.Detector.EDS.elevation_angle,
-                                       beta_tilt = md.Acquisition_instrument.TEM.Stage.tilt_beta))
-        except AttributeError :
-            print("You need to define the azimuth and elevation of the detector as well as the alpha and beta tilt of the sample holder. Please, use the set_microscope_parameters function.")
+        @number_to_symbol_list
+        def sym_elts(elements = []) :
+            return elements
+        
+        @symbol_to_number_list
+        def num_elts(elements = []) :
+            return elements
 
+        _elts = sym_elts(elements = self.model.get_elements(False))
+        _elts_indices = self.model.NMF_simplex()
+
+        skipped_elts = sym_elts(elements = skipped_elements)
+        elts = []
+        elts_indices = []
+        for i,elt in enumerate(_elts) :
+            if elt in skipped_elts :
+                pass
+            else :
+                elts.append(elt)
+                elts_indices.append(_elts_indices[i])
+
+        W = _W[elts_indices,:]
+        WH = (W@H)
+        WH = WH.reshape([W.shape[0]]+list(self.data.shape[:-1]))
+            
+        WH/=WH.sum(0)[np.newaxis,...]/100
+
+        if self.axes_manager.navigation_dimension == 2:
+            Signal = hs.signals.Signal2D
+        elif self.axes_manager.navigation_dimension ==1:
+            Signal = hs.signals.Signal1D
+
+        qs = [Signal(WH[i],
+                    metadata = {"General":{"name":el,
+                    "title":el+" Quantification"}},colorbar_label="A") for i,el in enumerate(elts)]
+        
+        for q in qs:
+            for i in range(self.axes_manager.navigation_dimension):
+                q.axes_manager[i].update_from(self.axes_manager[i],["units","scale","name","offset"])
+            q.metadata.Signal.quantity = "Atomic %"
+            wh = Signal(WH)
+
+        for i in range(self.axes_manager.navigation_dimension):
+            wh.axes_manager[1+i].update_from(self.axes_manager[i],["units","scale","name","offset"])
+            
+        self.quantification_list = qs
+        self.quantification_signal = wh
+
+        for k,m in self.metadata: self.quantification_signal.metadata.set_item(k,m)
+        self.quantification_signal.metadata.set_item("Sample.elements", elts)
+        self.quantification_signal.metadata.set_item("Signal.quantity" ,"Atomic %")
+        self.quantification_signal.axes_manager[0].name = "Elements"
+        if self.quantification_signal.metadata.has_item("Sample.xray_lines"):
+            self.quantification_signal.metadata.set_item("Sample.xray_lines" , [i for i in self.quantification_signal.metadata.Sample.xray_lines if not i.split("_")[0] in skipped_elts])
+        self.quantification_signal_1d = self.quantification_signal.as_signal1D(0)
+        #hack to label elements. Horrible, I know.
+        def label_elements():
+            self.quantification_signal._plot.navigator_plot.ax.set_xticks(list(range(len(elts))),elts)
+            return
+
+        self.quantification_signal.axes_manager[0].events.index_changed.connect(label_elements,[])
+
+        hs.plot.plot_images(qs)
+
+        return
+
+    @_check_decomposition
+    def plot_comp_model(self,comp_index : int) :
+        r"""
+        Plots espm model of the component #comp_index, showing contributions of each element and background.
+
+        Parameters
+        ----------
+        comp_index : int
+            Component index for which the model plot is built.
+        
+        Returns
+        -------
+        Figure : matplotlib.pyplot.figure
+            The figure of the plot.
+        """
+
+        idx = comp_index
+        els = self.get_full_el_list()+["Background 1","Background 2"]
+        self.GW = self.learning_results.decomposition_algorithm.G_@self.learning_results.decomposition_algorithm.W_
+        gs,cs = self.learning_results.decomposition_algorithm.W_.shape
+        G_idx = self.learning_results.decomposition_algorithm.G_*self.learning_results.decomposition_algorithm.W_[:,idx]
+        
+        x = self.axes_manager[-1].axis
+        plt.figure()
+        plt.plot(x,self.GW[:,idx],"k--",label="Component")
+        for i in range(gs):
+            color = list(mpl.colors.TABLEAU_COLORS.values())[i%10]
+            plt.plot(x,G_idx[:,i],color = color,label = els[i])
+            plt.fill_between(x,G_idx[:,i],alpha = 0.4,color = color)
+        plt.legend()
+        ax = plt.gca()
+        plt.title("Model of component {}".format(str(idx)))
+        
+        return plt.gcf()
+
+    @_check_decomposition
+    def plot_data_model(self):
+        r"""
+        Plots espm decomposition model as a new signal, showing contributions of each element and background
+        to each pixel.
+
+        Parameters
+        ----------
+        WH : np.ndarray
+            WH model. by default is taken from the current decomposition.
+        
+        Returns
+        -------
+        None
+        """
+
+        W = self.learning_results.decomposition_algorithm.W_
+        G = self.learning_results.decomposition_algorithm.G_
+        H = self.learning_results.decomposition_algorithm.H_
+        if self.learning_results.navigation_mask is not None:
+            H = self.fix_masked_H()
+
+        WH = W@H
+
+        contributions = [hs.signals.Signal1D((G[:,[i]]@(WH)[[i],:]).T.reshape(self.data.shape))  for i in range(G.shape[1])]
+        contributions.append(hs.signals.Signal1D((G@WH).T.reshape(self.data.shape)))
+        els = self.metadata.EDS_model.elements 
+        titles =self.get_full_el_list()+["Background 1","Background 2","Full Model"]
+        for i,c in enumerate(contributions):
+                for a,b in zip(c.axes_manager._axes,self.axes_manager._axes):
+                    a.update_from(b)
+                c.metadata.General.title = titles[i]
+
+
+        if self.axes_manager.navigation_dimension == 1:
+            nav = self.sum(-1).as_signal1D(0)
+            position = hs.roi.Point1DROI(0)
+            nav_kwargs={"color":"blue"}
+
+        elif self.axes_manager.navigation_dimension == 2:
+            nav = self.sum(-1).as_signal2D((0,1))
+            position = hs.roi.Point2DROI(0,0)
+            nav_kwargs={}
+
+        nav.plot(**nav_kwargs)
+        position_interactive = position.interactive(self,nav,color="red")
+        positions_contribs = [position.interactive(g,None) for g in contributions]
+        hs.plot.plot_spectra([position_interactive]+positions_contribs,legend="auto",
+                             linestyle=["-"]+["--" for i in positions_contribs],
+                             color = ["k"]+list(mpl.colors.TABLEAU_COLORS.values())*10)
+
+        return
+    
+    @_check_decomposition
+    def plot_data_model_ROI(self):
+        r"""
+        Plots ESPM EDXS model fit results on the experimental data, summed over the chosen region of interest.
+
+        Parameters
+        ----------
+        None : 
+            The data are taken from a previous decomposition.
+        
+        Returns
+        -------
+        None
+        """
+        
+        W = self.learning_results.decomposition_algorithm.W_
+        G = self.learning_results.decomposition_algorithm.G_
+        H = self.learning_results.decomposition_algorithm.H_
+        if self.learning_results.navigation_mask is not None:
+            H = self.fix_masked_H()
+
+        WH = np.matmul(W, H)
+
+        contributions = [hs.signals.Signal1D((G[:, [i]] @ (WH)[[i], :]).T.reshape(self.data.shape)) for i in range(G.shape[1])]
+        contributions.append(hs.signals.Signal1D((np.matmul(G, WH)).T.reshape(self.data.shape)))
+
+        titles = self.get_full_el_list() + ["Background 1", "Background 2", "Full Model"]
+        for i, c in enumerate(contributions):
+            for a, b in zip(c.axes_manager._axes, self.axes_manager._axes):
+                a.update_from(b)
+            c.metadata.General.title = titles[i]
+
+        fig, ax = plt.subplots()
+        self.plot()
+
+        roi = hs.roi.RectangularROI(left = 0, top = 0, right = self.axes_manager[1].size, bottom = self.axes_manager[0].size)
+        
+        imr = roi.interactive(self, color = 'green').sum(axis = 0).sum(axis = 0)
+        contributions_roi = [roi.interactive(g, None).sum(axis = 0).sum(axis = 0) for g in contributions]
+
+        spectra = [imr] + contributions_roi
+        lines = []
+        
+        line, = ax.plot(imr.data, label = imr.metadata.General.title, linestyle = "-")
+        lines.append(line)
+        
+        for spectrum in contributions_roi:
+            line, = ax.plot(spectrum.data, label = spectrum.metadata.General.title, linestyle = "--")
+            lines.append(line)
+        
+        ax.legend()
+
+        def update_plot(*args, **kwargs):
+            imr = roi.interactive(self, color = 'green').sum(axis = 0).sum(axis = 0)
+            contributions_roi = [roi.interactive(g, None).sum(axis = 0).sum(axis = 0) for g in contributions]
+
+            all_data = [imr] + contributions_roi
+            for line, new_data in zip(lines, all_data):
+                line.set_ydata(new_data.data)
+
+            ax.relim()
+            ax.autoscale_view()
+            fig.canvas.draw_idle()
+
+        roi.events.changed.connect(update_plot)
+        update_plot()
+        plt.show()
+
+        return
+
+    @_check_decomposition
+    def elemental_profile(self,**kwargs):
+        r"""
+        Plots quantification profiles of all elements. 
+
+        Parameters
+        ----------
+        **kwargs are passed to Line2DROI
+        
+        Returns
+        -------
+        Quantification profiles
+        """
+        line = hs.roi.Line2DROI(**kwargs)
+        p1 = hs.signals.Signal2D(self.data.sum(-1))
+        if not self.learning_results.navigation_mask is None:
+            p1.data[self.learning_results.navigation_mask.reshape(self.data.shape[:-1])]=np.nan
+        for i in range(2):
+            p1.axes_manager[i].update_from(self.axes_manager[i],["units","scale","name","offset"])
+        p1.plot()
+        line.interactive(p1,color="red")
+        p_contrib = [line.interactive(g,None) for g in self.quantification_list]#here are the profiles stored
+        for p in p_contrib:
+            p.axes_manager[0].name = "Profile"
+            p.metadata.Signal.quantity = "Atomic %"
+        hs.plot.plot_spectra(p_contrib,legend = "auto")
+        ax = plt.gca()
+        ax.set_ylabel("Atomic %")
+        return p_contrib
+
+    def calibrate_from_lines(self) -> None:
+        r"""
+        Selects two Xray lines from a 1D EDXS spectrum for further calibration by the apply_interactive_calibration method.
+        """
+        print("Instructions : ")
+        print("1. Select two X-ray lines (ideally far apart). The energies of the fitted peaks appears nearby.")
+        print("2. Note down those values and use : apply_interactive_calibration(e1,e2), where e1 and e2 are the energy values in keV.")
+        self._gauss_means=np.zeros(2)
+        a = self.sum((0,1))
+        b = a.deepcopy()
+        b.data=np.zeros(b.data.shape)
+        a.plot()
+        hs.plot.plot_spectra([b,b],fig=plt.gcf(),ax=plt.gca(),color="k",linewidth=2)
+        eax = self.axes_manager[-1].axis
+        ne = self.axes_manager[-1].axis.shape[0]
+
+        roi1 = hs.roi.SpanROI(left=eax[ne//5],right=eax[2*ne//5])
+        roi_signal1 = roi1.interactive(a,color="blue")
+
+        roi2 = hs.roi.SpanROI(left=eax[3*ne//5],right=eax[4*ne//5])
+        roi_signal2 = roi2.interactive(a)
+
+        hs.interactive(self.fit_plot_gauss,event = roi1.events.changed,roi_signal = roi_signal1,a=a,roi = roi1,i=1)
+        hs.interactive(self.fit_plot_gauss,event = roi2.events.changed,roi_signal = roi_signal2,a=a,roi = roi2,i=2)
+        # print("When ready, run self.apply_interactive_calibration(enery_left_peak,energy_right_peak)")
+
+    def apply_interactive_calibration(self,energy_left_peak : float,energy_right_peak : float) -> None :
+        r"""
+        Applies the calibration on two peaks previously selected using calibrate_from_lines.
+        It modifies the axes of the object.
+        """
+        #Dumbass hyperspy keeps events linked and has no "remove events" method
+        self.axes_manager.events.any_axis_changed.trigger = hyperspy.events.Event().trigger
+        self.axes_manager.events.any_axis_changed._connected_some={}
+
+        current_e1 = min(self._gauss_means)
+        current_e2 = max(self._gauss_means)
+        eax = self.axes_manager[-1]
+        ch2 = eax.value2index(current_e2)
+        old_scale = eax.scale
+        old_offset = eax.offset
+
+        new_scale = old_scale*(energy_right_peak-energy_left_peak)/(current_e2-current_e1)
+        new_offset = energy_right_peak-(current_e2-old_offset)*new_scale/old_scale
+        print(new_scale)
+        print(new_offset)
+        with self.axes_manager.events.any_axis_changed.suppress():
+            self.axes_manager[-1].scale = new_scale
+        self.axes_manager[-1].offset = new_offset
+        return
+
+    def fit_plot_gauss(self,roi_signal,a,roi,i):
+
+        x = a.axes_manager[-1].axis
+        y = np.zeros(a.data.shape)
+        eax = a.axes_manager[-1]
+        y[eax.value2index(roi.left):eax.value2index(roi.right)]=roi_signal.data
+        
+        mean = (x*y).sum()/y.sum()
+
+        sigma =  np.sqrt((y * (x - mean)**2).sum() / y.sum())
+        popt,_pcov = curve_fit(Gauss, x, y, p0=[max(y),mean ,sigma])
+        self._gauss_means[i-1]=popt[1]
+        fit_mean = popt[1]
+        
+        fig = plt.gcf()
+        ax = fig.axes[0]
+        l = fig.axes[0].lines[i]
+        l.set_ydata(Gauss(x,*popt))
+
+        # --- Interactive Text Handling ---
+        text_label = f"Peak energy: {fit_mean:.2f} keV"
+        
+        # Look for an existing text object belonging to this specific index/plot
+        text_obj = None
+        for txt in ax.texts:
+            if txt.get_gid() == f"gauss_text_{i}":
+                text_obj = txt
+                break
+        
+        if text_obj:
+            # Update the existing text and reposition it dynamically if needed
+            text_obj.set_text(text_label)
+            text_obj.set_position((fit_mean, max(y) * 0.9)) 
+        else:
+            # Create a new text object and give it a unique Group ID (gid)
+            # transform=ax.transData places it relative to your data coordinates
+            ax.text(
+                fit_mean, max(y) * 0.9, text_label, 
+                color=l.get_color(), fontweight='bold',
+                bbox=dict(facecolor='white', alpha=0.6, edgecolor='none'),
+                gid=f"gauss_text_{i}"
+            )
+
+        fig.canvas.draw()
+
+    #########
+    # Utils #
+    #########
+
+    def get_full_el_list(self):
+        els = self.metadata.EDS_model.elements.copy()
+        els_names = [num_to_symbol(el) for el in els]
+        return els_names
 
 #######################
 # Auxiliary functions #
 #######################
 
-def get_metadata(spim) : 
+def get_metadata(spim) :
     r"""
     Get the metadata of the :class:`EDSespm` object and format it as a model parameters dictionary.
     """
@@ -883,16 +1393,23 @@ def get_metadata(spim) :
             "toa" : spim.metadata.Acquisition_instrument.TEM.Detector.EDS.take_off_angle,
             "density" : spim.metadata.Sample.density
         }
-        try : 
+        try :
             pars_dict["Det"] = spim.metadata.Acquisition_instrument.TEM.Detector.EDS.type.as_dictionary()
-        except AttributeError : 
+        except AttributeError :
             pars_dict["Det"] = spim.metadata.Acquisition_instrument.TEM.Detector.EDS.type
 
         mod_pars["params_dict"] = pars_dict
 
-    except AttributeError : 
+    except AttributeError :
         print("You need to define the relevant parameters for the analysis. Use the set_analysis_parameters function.")
 
     return mod_pars
 
+def build_G(model, g_params) :
+    model.generate_g_matr(**g_params)
+    return model.G
 
+
+
+def Gauss(x, a, x0, sigma):
+    return a * np.exp(-(x - x0)**2 / (2 * sigma**2))
